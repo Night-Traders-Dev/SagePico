@@ -30,6 +30,8 @@ replacements = [
     ("fputc('\\n', stdout)", 'printf("\\n")'),
     # fputc to stderr
     ("fputc('\\n', stderr)", 'fprintf(stderr, "\\n")'),
+    # Fix: exit() crashes baremetal - replace with infinite loop
+    ('exit(1);', 'while(1) { tight_loop_contents(); }'),
 ]
 
 for old, new in replacements:
