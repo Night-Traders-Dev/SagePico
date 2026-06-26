@@ -382,19 +382,32 @@ if libc == nil:
 
 # Check if stdin is a terminal
 let isatty = ffi_int("isatty", [0])
-if isatty == 1:
-    stdin_is_tty = true
+stdin_is_tty = (isatty == 1)
+if stdin_is_tty:
     save_stdin_termios()
-    set_raw_mode(0)
+    if saved_termios_valid:
+        let ok = set_raw_mode(0)
+        if not ok:
+            print "Warning: could not set raw mode on stdin"
+    else:
+        print "Note: terminal setup skipped (running in pipe/non-tty)"
 
-# Open serial port
+# Open serial port — retry up to 10 times (5s total)
 let flags = O_RDWR | O_NOCTTY | O_NONBLOCK
-serial_fd = ffi_int("open", [port_path, flags])
+serial_fd = -1
+let retries = 0
+while serial_fd < 0 and retries < 10:
+    serial_fd = ffi_int("open", [port_path, flags])
+    if serial_fd < 0:
+        retries = retries + 1
+        if retries == 1:
+            print "Waiting for " + port_path + "..."
+        ffi_int("usleep", [500000])  # 500ms
 if serial_fd < 0:
-    print COLOR_RED + "Error: cannot open " + port_path + COLOR_RESET
-    print "Is the Feather connected and in BOOTSEL or running firmware?"
+    print COLOR_RED + "Error: cannot open " + port_path + " after 5s" + COLOR_RESET
+    print "Is the Feather connected and running firmware?"
     print "Check: ls -la " + port_path
-    if stdin_is_tty:
+    if stdin_is_tty and saved_termios_valid:
         restore_stdin_termios()
     return
 
@@ -412,6 +425,6 @@ if serial_fd >= 0:
     ffi_int("close", [serial_fd])
     out("\n" + COLOR_DIM + "Serial port closed." + COLOR_RESET + "\n")
 
-if stdin_is_tty:
+if stdin_is_tty and saved_termios_valid:
     restore_stdin_termios()
     out(COLOR_DIM + "Terminal restored." + COLOR_RESET + "\n")
