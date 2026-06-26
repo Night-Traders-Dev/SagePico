@@ -9,6 +9,14 @@
      pico.gpio_put(25, 0)
 */
 
+/* Forward decls from flash_store.h (injected before us) */
+static void flash_store_init(void);
+static int  flash_store_put(const char* key, const uint8_t* val, uint16_t vlen);
+static int  flash_store_get(const char* key, uint8_t* val_out, uint16_t* vlen_out);
+static int  flash_store_del(const char* key);
+static void flash_store_keys(char keys[][64], int* count);
+static void flash_persist_repl_vars(void);
+
 /* ---- helpers ---- */
 static inline int sv_int(SageValue v) {
     if (v.type == SAGE_TAG_NUMBER) return (int)v.as.number;
@@ -323,6 +331,40 @@ static SageValue sage_ffi_uart_putc_wrap(int argc, SageValue* argv) {
 static SageValue sage_ffi_uart_puts_wrap(int argc, SageValue* argv) {
     (void)argc; sage_nv_uart_puts(argv[0]); return sage_nil();
 }
+/* Flash store */
+static SageValue sage_ffi_flash_save_wrap(int argc, SageValue* argv) {
+    if (argc >= 2 && argv[0].type == SAGE_TAG_STRING && argv[1].type == SAGE_TAG_STRING) {
+        flash_store_init();
+        flash_store_put(argv[0].as.string,
+                       (const uint8_t*)argv[1].as.string,
+                       (uint16_t)strlen(argv[1].as.string));
+    }
+    return sage_nil();
+}
+static SageValue sage_ffi_flash_load_wrap(int argc, SageValue* argv) {
+    if (argc >= 1 && argv[0].type == SAGE_TAG_STRING) {
+        uint8_t buf[256]; uint16_t len = 0;
+        if (flash_store_get(argv[0].as.string, buf, &len) == 0) {
+            buf[len] = 0;
+            return sage_string((const char*)buf);
+        }
+    }
+    return sage_nil();
+}
+static SageValue sage_ffi_flash_del_wrap(int argc, SageValue* argv) {
+    if (argc >= 1 && argv[0].type == SAGE_TAG_STRING)
+        flash_store_del(argv[0].as.string);
+    return sage_nil();
+}
+static SageValue sage_ffi_flash_keys_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    char keys[64][64]; int n = 0;
+    flash_store_keys(keys, &n);
+    SageValue arr = sage_array();
+    for (int i = 0; i < n; i++)
+        sage_array_push_raw(arr.as.array, sage_string(keys[i]));
+    return arr;
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -339,6 +381,10 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_TIME, "time_us",  sage_ffi_time_us_wrap),
     FFI_ENTRY(FFI_HANDLE_UART, "putc", sage_ffi_uart_putc_wrap),
     FFI_ENTRY(FFI_HANDLE_UART, "puts", sage_ffi_uart_puts_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "flash_save",  sage_ffi_flash_save_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "flash_load",  sage_ffi_flash_load_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "flash_del",   sage_ffi_flash_del_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "flash_keys",  sage_ffi_flash_keys_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
@@ -675,6 +721,26 @@ static void sage_repl(void) {
     con_puts("Ctrl+C to exit REPL, resume display\n\n");
 
     sage_repl_init();
+    flash_store_init();
+
+    /* Restore saved variables */
+    {
+        char keys[64][64]; int n = 0;
+        flash_store_keys(keys, &n);
+        if (n > 0) {
+            printf("Restored %d vars from flash\n", n);
+            con_printf("Restored %d vars from flash\n", n);
+            for (int i = 0; i < n; i++) {
+                uint8_t buf[256]; uint16_t len = 0;
+                if (flash_store_get(keys[i], buf, &len) == 0) {
+                    buf[len] = 0;
+                    sage_dict_set(sage_repl_vars.as.dict, keys[i],
+                                 sage_string((const char*)buf));
+                }
+            }
+        }
+    }
+
     char line[256];
     int idx = 0;
     int repl_active = 1;
@@ -689,8 +755,11 @@ static void sage_repl(void) {
             if (c == '\r' || c == '\n') {
                 if (idx > 0) { line[idx] = 0; printf("\n"); con_putchar_raw('\n'); break; }
             } else if (c == 0x03) { /* Ctrl+C */
-                printf("^C\nREPL exit, resuming display\n");
-                con_puts("^C\nREPL exit, resuming display\n");
+                printf("^C\nREPL exit, saving vars...\n");
+                con_puts("^C\nREPL exit, saving vars...\n");
+                flash_persist_repl_vars();
+                printf("Resuming display\n");
+                con_puts("Resuming display\n");
                 repl_active = 0;
                 break;
             } else if (c == 0x08 || c == 0x7f) { /* Backspace */
@@ -705,7 +774,35 @@ static void sage_repl(void) {
         if (idx == 0) continue;
         line[idx] = 0;
 
-        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) break;
+        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
+            printf("Saving vars to flash...\n");
+            con_puts("Saving vars to flash...\n");
+            flash_persist_repl_vars();
+            break;
+        }
         sage_repl_eval(line);
+    }
+}
+
+/* Persist REPL variables to flash (called on quit/Ctrl+C) */
+static void flash_persist_repl_vars(void) {
+    if (sage_repl_vars.type != 5) return; /* SAGE_TAG_DICT */
+    SageDict* dict = sage_repl_vars.as.dict;
+    char valbuf[64];
+    for (int i = 0; i < dict->count; i++) {
+        if (!dict->keys[i] || !dict->keys[i][0]) continue;
+        SageValue* v = &dict->values[i];
+        valbuf[0] = 0;
+        if (v->type == 1)      /* SAGE_TAG_NUMBER */
+            snprintf(valbuf, sizeof(valbuf), "%g", v->as.number);
+        else if (v->type == 2) /* SAGE_TAG_BOOL */
+            snprintf(valbuf, sizeof(valbuf), "%s", v->as.boolean ? "true" : "false");
+        else if (v->type == 3) /* SAGE_TAG_STRING */
+            snprintf(valbuf, sizeof(valbuf), "%s", v->as.string);
+        else
+            snprintf(valbuf, sizeof(valbuf), "[type=%d]", v->type);
+        flash_store_put(dict->keys[i],
+                       (const uint8_t*)valbuf,
+                       (uint16_t)strlen(valbuf));
     }
 }

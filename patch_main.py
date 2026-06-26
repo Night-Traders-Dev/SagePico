@@ -46,14 +46,17 @@ data = re.sub(
 # 4. Inject sage_bridge.h content (replaces sage_init_native_module + FFI stubs)
 #    Positioned after all SageValue types are defined (~line 774)
 bridge_path = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'sage_bridge.h')
+flash_path  = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'flash_store.h')
 with open(bridge_path, 'r') as bf:
     bridge_code = bf.read()
+with open(flash_path, 'r') as ff:
+    flash_code = ff.read()
 data = data.replace(
     'static SageValue sage_init_native_module(const char* name) {\n'
     '    /* For now, just return an empty dict; real native modules should be linked */\n'
     '    return sage_make_dict();\n'
     '}\n',
-    bridge_code + '\n'
+    flash_code + '\n' + bridge_code + '\n'
 )
 
 # 4. Init with display + pattern
