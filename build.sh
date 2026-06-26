@@ -91,6 +91,7 @@ target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico")
 target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/${ARCH_DIR}")
 pico_enable_stdio_usb(hello 1)
 pico_enable_stdio_uart(hello 1)
+target_compile_definitions(hello PRIVATE PICO_STDIO_DEFAULT_CRLF=0)
 ${SHIMS_OPT}
 pico_add_extra_outputs(hello)
 CMAKEEOF
