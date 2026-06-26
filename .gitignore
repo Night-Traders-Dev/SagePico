@@ -1,0 +1,20 @@
+# Build artifacts
+build/
+.tmp/
+*.sgvm
+*.sgrv
+*.uf2
+*.elf
+*.o
+*.bin
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deps (submodule managed)
+# deps/ contents are gitignored by submodule
