@@ -20,7 +20,7 @@ data = data.replace(
     '#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"'
 )
 
-# 3. Strip old FFI stubs (they use dlopen/dlsym which doesn't work on baremetal)
+# 3. Strip old FFI stubs + new Sage v3.9.0 generated FFI (we provide baremetal versions)
 data = re.sub(
     r'static SageValue sage_ffi_open\(SageValue libname\) \{\s*'
     r'if \(libname\.type != SAGE_TAG_STRING\) return sage_nil\(\);\s*'
@@ -41,6 +41,13 @@ data = re.sub(
     '', data)
 data = re.sub(
     r'static SageValue sage_ffi_call_full\(SageValue handle, SageValue name, SageValue args, SageValue rt\) \{ return sage_nil\(\); \}\n',
+    '', data)
+# Strip Sage v3.9.0 generated ffi_call/ffi_call_full (4-arg version with dlsym)
+data = re.sub(
+    r'static SageValue sage_ffi_call\(SageValue handle, SageValue name, SageValue ret_type, SageValue args\) \{.*?\n    return sage_nil\(\);\n\}\n',
+    '', data, flags=re.DOTALL)
+data = re.sub(
+    r'static SageValue sage_ffi_call_full\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ return sage_ffi_call\(h,n,r,a\); \}\n',
     '', data)
 
 # 4. Inject flash_store.h, rvvm.h, gfx_vm.h, sage_bridge.h content
