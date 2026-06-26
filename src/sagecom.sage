@@ -93,7 +93,8 @@ ffi_libc("usleep", [500000])
 ffi_call(libtty, "sagecom_serial_drain", "void", [serial_fd])
 
 # Print banner atomically (single write call to minimize race window)
-let banner = CYAN + BOLD + "╔══════════════════════════════════════════╗\n" + "║  sagecom  " + port_path + " @ " + str(baud_rate) + "              ║\n" + "║  Ctrl+A Q=quit  ~.=quit  ~q=quit       ║\n" + "╚══════════════════════════════════════════╝\n" + RESET + "\n"
+# Print status line (no box-drawing — terminal-agnostic)
+let banner = CYAN + BOLD + "sagecom: " + port_path + " @ " + str(baud_rate) + " baud" + RESET + "\n" + DIM + "  ~. or ~q to quit, Ctrl+A C=clear R=reset" + RESET + "\n\n"
 out(banner)
 
 # ---- Main loop ----
