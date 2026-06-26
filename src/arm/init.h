@@ -6,6 +6,8 @@
 
 #include "hardware/resets.h"
 #include "hardware/irq.h"
+#include "hardware/watchdog.h"
+#include "pico/bootrom.h"
 
 /* ARM-specific pre-stdio init: reset USB before init.
    The Sage runtime's large BSS/heap may overlap USB DMA buffers;

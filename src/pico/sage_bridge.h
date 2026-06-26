@@ -791,6 +791,50 @@ static void sage_repl_eval(const char* cmd) {
     sage_repl_skip_ws(cmd, &pos);
     if (cmd[pos] == 0 || cmd[pos] == '#') return;
 
+    /* ---- Shell commands ---- */
+    if (strcmp(cmd + pos, "help") == 0) {
+        printf("\\n  Shell commands:\\n");
+        printf("  sage           Open the full Sage REPL (default)\\n");
+        printf("  help           Show this help\\n");
+        printf("  version        Show firmware version\\n");
+        printf("  reboot         Reboot the device\\n");
+        printf("  reboot --boot  Reboot to BOOTSEL (firmware update)\\n");
+        printf("\\n  Expressions:   1+1, let x=42, gpio_put(7,1)\\n");
+        printf("  Multi-line:    end line with : to continue\\n");
+        printf("  Programs:      procs, save <n>, run <n>, edit <n>\\n");
+        printf("\\n");
+        con_printf("\\n  Shell commands:\\n  sage  help  version  reboot\\n\\n");
+        return;
+    }
+    if (strcmp(cmd + pos, "version") == 0) {
+        printf("SagePico v2.0 — SageLang 3.9.2 on RP2350 (ARM)\\n");
+        printf("HSTX DVI 1280x800, 256-color, REPL + GFX VM\\n");
+        con_printf("SagePico v2.0\\n");
+        return;
+    }
+    if (strcmp(cmd + pos, "sage") == 0) {
+        /* Already in REPL — just show the banner again */
+        printf("\\n=== Sage REPL ===\\n");
+        printf("Multi-line: end line with : to continue, blank line to finish\\n");
+        printf("Commands: procs, save <name>, run <name>, load <name>, edit <name>\\n");
+        printf("Ctrl+C to exit REPL, resume display\\n\\n");
+        con_printf("\\n=== Sage REPL ===\\n");
+        return;
+    }
+    if (strcmp(cmd + pos, "reboot") == 0 || strncmp(cmd + pos, "reboot ", 7) == 0) {
+        int to_bootsel = (strstr(cmd + pos, "--boot") != NULL);
+        printf("Rebooting%s...\\n", to_bootsel ? " to BOOTSEL" : "");
+        con_printf("Rebooting%s...\\n", to_bootsel ? " to BOOTSEL" : "");
+        sleep_ms(500);
+        if (to_bootsel) {
+            reset_usb_boot(0, 0);  /* Reboot to BOOTSEL mode */
+        } else {
+            watchdog_reboot(0, 0, 0);  /* Normal reboot */
+        }
+        while(1) tight_loop_contents();
+        return;
+    }
+
     if (strncmp(cmd + pos, "let ", 4) == 0) {
         pos += 4;
         sage_repl_skip_ws(cmd, &pos);
@@ -824,6 +868,8 @@ static void sage_repl_eval(const char* cmd) {
 static void sage_repl(void) {
     printf("\n=== Sage REPL ===\n");
     con_printf("\n=== Sage REPL ===\n");
+    printf("Shell: help, version, reboot, sage\n");
+    con_puts("Shell: help, version, reboot, sage\n");
     printf("Multi-line: end line with : to continue, blank line to finish\n");
     con_puts("Multi-line: end line with : to continue, blank line to finish\n");
     printf("Commands: procs, save <name>, run <name>, load <name>, edit <name>\n");

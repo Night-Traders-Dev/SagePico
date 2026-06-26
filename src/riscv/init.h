@@ -7,6 +7,8 @@
 #include "hardware/resets.h"
 #include "hardware/clocks.h"
 #include "hardware/irq.h"
+#include "hardware/watchdog.h"
+#include "pico/bootrom.h"
 
 /* RISC-V-specific pre-stdio init: reset USB controller before init.
    Hazard3's interrupt controller (MEIEA/MEIPRA CSRs) has different
