@@ -88,9 +88,12 @@ if serial_fd < 0:
 
 # Drain any data that arrived during connection setup
 ffi_call(libtty, "sagecom_serial_drain", "void", [serial_fd])
+# Wait for any in-flight data to arrive, then drain again
+ffi_libc("usleep", [500000])
+ffi_call(libtty, "sagecom_serial_drain", "void", [serial_fd])
 
-# Print banner atomically
-let banner = CYAN + BOLD + "╔══════════════════════════════════════════╗\n" + "║  sagecom  " + port_path + " @ " + str(baud_rate) + "\n" + "║  Ctrl+A Q=quit C=clear R=reset          ║\n" + "╚══════════════════════════════════════════╝\n" + RESET + "\n"
+# Print banner atomically (single write call to minimize race window)
+let banner = CYAN + BOLD + "╔══════════════════════════════════════════╗\n" + "║  sagecom  " + port_path + " @ " + str(baud_rate) + "              ║\n" + "║  Ctrl+A Q=quit C=clear R=reset          ║\n" + "╚══════════════════════════════════════════╝\n" + RESET + "\n"
 out(banner)
 
 # ---- Main loop ----
