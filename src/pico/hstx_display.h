@@ -33,9 +33,9 @@
 #define OUT_V_BP    14
 #define OUT_V_TOTAL (OUT_HEIGHT + OUT_V_FP + OUT_V_SYNC + OUT_V_BP)
 
-/* Framebuffer: 256-colour palette, 640x400 8bpp */
+/* Framebuffer: 256-colour palette, 640x400 8bpp — heap-allocated to avoid BSS bloat */
 static uint16_t disp_palette[256] __attribute__((aligned(4)));
-static uint8_t  disp_fb[FB_HEIGHT][FB_WIDTH] __attribute__((aligned(4)));
+static uint8_t* disp_fb = NULL;  /* allocated in display_init() */
 
 /* HSTX command expander opcodes (bits [15:12] of FIFO word) */
 #define HSTX_CMD_RAW         (0x0u << 12)
@@ -71,11 +71,13 @@ static inline void hx_push_tmds(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void display_init(void) {
+    /* Allocate framebuffer on heap to avoid 256K BSS */
+    if (!disp_fb) disp_fb = (uint8_t*)malloc(FB_HEIGHT * FB_WIDTH);
     for (int i = 0; i < 256; i++) {
         uint8_t r = i & 0xe0, g = (i & 0x1c) << 3, b = (i & 0x03) << 6;
         disp_palette[i] = (uint16_t)(((r&0xf8)<<8)|((g&0xfc)<<3)|(b>>3));
     }
-    memset(disp_fb, 0, sizeof(disp_fb));
+    memset(disp_fb, 0, FB_HEIGHT * FB_WIDTH);
     disp_palette[1]=0xffff; disp_palette[2]=0xf800; disp_palette[3]=0x07e0;
     disp_palette[4]=0x001f; disp_palette[5]=0xffe0; disp_palette[6]=0xf81f; disp_palette[7]=0x07ff;
 
@@ -141,11 +143,11 @@ void display_init(void) {
 }
 
 /* Drawing */
-static inline void disp_clear(uint8_t c) { memset(disp_fb, c, sizeof(disp_fb)); }
+static inline void disp_clear(uint8_t c) { memset(disp_fb, c, FB_HEIGHT * FB_WIDTH); }
 static inline void disp_rect(int x, int y, int w, int h, uint8_t c) {
     for (int dy=y; dy<y+h && dy<FB_HEIGHT; dy++)
         for (int dx=x; dx<x+w && dx<FB_WIDTH; dx++)
-            disp_fb[dy][dx] = c;
+            disp_fb[dy * FB_WIDTH + dx] = c;
 }
 
 /* ================================================================
@@ -261,8 +263,8 @@ static const uint8_t con_font[95][8] = {
 static inline void con_setpos(int x, int y) { con_cx = x; con_cy = y; }
 
 static inline void con_scroll(void) {
-    memmove(disp_fb[0], disp_fb[8], (FB_HEIGHT-8)*FB_WIDTH);
-    memset(disp_fb[FB_HEIGHT-8], CON_BG, 8*FB_WIDTH);
+    memmove(disp_fb, disp_fb + 8 * FB_WIDTH, (FB_HEIGHT - 8) * FB_WIDTH);
+    memset(disp_fb + (FB_HEIGHT - 8) * FB_WIDTH, CON_BG, 8 * FB_WIDTH);
 }
 
 static inline void con_putchar_raw(char c) {
@@ -276,7 +278,7 @@ static inline void con_putchar_raw(char c) {
     int px = con_cx * 8, py = con_cy * 8;
     for (int row = 0; row < 8; row++) {
         uint8_t bits = glyph[row];
-        uint8_t* line = &disp_fb[py + row][px];
+        uint8_t* line = &disp_fb[(py + row) * FB_WIDTH + px];
         for (int col = 0; col < 8; col++) {
             line[col] = (bits & 0x80) ? CON_FG : CON_BG;
             bits <<= 1;
@@ -303,7 +305,7 @@ static void con_printf(const char* fmt, ...) {
 /* Clear console */
 static inline void con_clear(void) {
     con_cx = con_cy = 0;
-    memset(disp_fb, CON_BG, sizeof(disp_fb));
+    memset(disp_fb, CON_BG, FB_HEIGHT * FB_WIDTH);
 }
 
 /* GT911 Touch — I2C0 on GPIO 22(SDA)/23(SCL) */

@@ -425,8 +425,8 @@ static SageValue sage_ffi_dma_unclaim_wrap(int argc, SageValue* argv) {
 static SageValue sage_ffi_gfx_init_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv;
     static gfx_vm_t gfx_vm;
-    extern uint8_t disp_fb[400][640];
-    gfx_vm_init(&gfx_vm, (uint8_t*)disp_fb);
+    extern uint8_t* disp_fb;
+    gfx_vm_init(&gfx_vm, disp_fb);
     return sage_bool(1);
 }
 static SageValue sage_ffi_gfx_load_wrap(int argc, SageValue* argv) {
