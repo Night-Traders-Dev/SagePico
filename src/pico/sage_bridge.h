@@ -142,12 +142,22 @@ static SageValue sage_nv_i2c_init(SageValue baud) {
     return sage_nil();
 }
 static SageValue sage_nv_i2c_write(SageValue addr, SageValue data) {
-    (void)data;
+    if (data.type == SAGE_TAG_STRING) {
+        i2c_write_blocking(i2c0, (uint8_t)sv_int(addr),
+                          (const uint8_t*)data.as.string,
+                          strlen(data.as.string), false);
+    }
     return sage_nil();
 }
 static SageValue sage_nv_i2c_read(SageValue addr, SageValue len) {
-    (void)addr; (void)len;
-    return sage_nil();
+    int n = sv_int(len);
+    if (n <= 0 || n > 256) return sage_string("");
+    uint8_t* buf = (uint8_t*)malloc(n + 1);
+    if (!buf) return sage_string("");
+    int r = i2c_read_blocking(i2c0, (uint8_t)sv_int(addr), buf, n, false);
+    buf[(r > 0) ? r : 0] = 0;
+    SageValue v = sage_string_take((char*)buf);
+    return v;
 }
 
 /* ---- SPI (2 functions) ---- */
@@ -161,8 +171,15 @@ static SageValue sage_nv_spi_init(SageValue baud) {
     return sage_nil();
 }
 static SageValue sage_nv_spi_xfer(SageValue txdata) {
-    (void)txdata;
-    return sage_nil();
+    if (txdata.type != SAGE_TAG_STRING) return sage_string("");
+    size_t len = strlen(txdata.as.string);
+    if (len == 0) return sage_string("");
+    uint8_t* rx = (uint8_t*)malloc(len + 1);
+    if (!rx) return sage_string("");
+    spi_write_read_blocking(spi0, (const uint8_t*)txdata.as.string, rx, len);
+    rx[len] = 0;
+    SageValue v = sage_string_take((char*)rx);
+    return v;
 }
 
 /* ---- sage_init_native_module override ---- */
@@ -454,6 +471,23 @@ static SageValue sage_ffi_gfx_vblank_wrap(int argc, SageValue* argv) {
     if (!gfx_active_vm) return sage_bool(0);
     return sage_bool(gfx_active_vm->gpu_vblank);
 }
+/* I2C wrappers */
+static SageValue sage_ffi_i2c_init_wrap(int argc, SageValue* argv) {
+    (void)argc; sage_nv_i2c_init(argv[0]); return sage_nil();
+}
+static SageValue sage_ffi_i2c_write_wrap(int argc, SageValue* argv) {
+    sage_nv_i2c_write(argv[0], argv[1]); return sage_nil();
+}
+static SageValue sage_ffi_i2c_read_wrap(int argc, SageValue* argv) {
+    return sage_nv_i2c_read(argv[0], argv[1]);
+}
+/* SPI wrappers */
+static SageValue sage_ffi_spi_init_wrap(int argc, SageValue* argv) {
+    (void)argc; sage_nv_spi_init(argv[0]); return sage_nil();
+}
+static SageValue sage_ffi_spi_xfer_wrap(int argc, SageValue* argv) {
+    return sage_nv_spi_xfer(argv[0]);
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -493,6 +527,11 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "gfx_load",      sage_ffi_gfx_load_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "gfx_run",       sage_ffi_gfx_run_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "gfx_vblank",    sage_ffi_gfx_vblank_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "i2c_init",      sage_ffi_i2c_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "i2c_write",     sage_ffi_i2c_write_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "i2c_read",      sage_ffi_i2c_read_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "spi_init",      sage_ffi_spi_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "spi_xfer",      sage_ffi_spi_xfer_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
