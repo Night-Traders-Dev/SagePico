@@ -1,37 +1,55 @@
 #!/bin/bash
+# SagePico Test Suite - Desktop verification (no hardware required)
 
-echo "=== SagePico RP2350 Test Suite ==="
-echo
+SAGE="./deps/sagelang/sage"
+SAGEVM="./deps/SageVM/sagevm"
+PASS=0
+FAIL=0
 
-# Test 1: Check if Sage interpreter works
-echo "Test 1: Sage interpreter"
-./deps/sagelang/sage src/hello.sage
-echo
+check() {
+    local name="$1"
+    shift
+    echo -n "  $name ... "
+    if "$@" >/dev/null 2>&1; then
+        echo "PASS"
+        ((PASS++))
+    else
+        echo "FAIL"
+        ((FAIL++))
+    fi
+}
 
-# Test 2: Check if SageVM compilation works
-echo "Test 2: SageVM compilation"
-./deps/SageVM/sagevm compile src/hello.sage
-echo
+echo "=== SagePico Test Suite ==="
+echo ""
 
-# Test 3: Check if SageVM execution works
-echo "Test 3: SageVM execution"
-./deps/SageVM/sagevm run src/hello.sgvm
-echo
+echo "--- Sage Interpreter ---"
+check "Interpret hello.sage"      "$SAGE" src/hello.sage
 
-# Test 4: Check if Pico C generation works
-echo "Test 4: Pico C generation"
-./deps/sagelang/sage --emit-pico-c src/hello.sage -o test_pico.c
-if [ -f test_pico.c ]; then
-    echo "✓ Generated test_pico.c"
-    head -5 test_pico.c
-    rm test_pico.c
-else
-    echo "✗ Failed to generate test_pico.c"
+echo ""
+echo "--- SageVM ---"
+check "Compile to SGVM"           "$SAGEVM" compile src/hello.sage
+check "Run SGVM bytecode"         "$SAGEVM" run src/hello.sgvm
+check "Compile to SRVM (RISC-V)"  "$SAGEVM" compile --riscv src/hello.sage
+
+echo ""
+echo "--- Pico C Generation ---"
+check "Generate Pico C code"      "$SAGE" --emit-pico-c src/hello.sage -o /tmp/test_pico.c
+if [ -f /tmp/test_pico.c ]; then
+    echo "    Lines: $(wc -l < /tmp/test_pico.c)"
+    rm -f /tmp/test_pico.c
 fi
-echo
 
-echo "=== Test Complete ==="
-echo
-echo "To build for RP2350 baremetal, install ARM toolchain:"
-echo "  sudo apt-get install gcc-arm-none-eabi"
-echo "Then run: make pico"
+echo ""
+echo "--- Build (UF2) ---"
+if [ -f build/hello.uf2 ]; then
+    SIZE=$(ls -lh build/hello.uf2 | awk '{print $5}')
+    echo "  UF2 image: build/hello.uf2 ($SIZE)"
+    ((PASS++))
+else
+    echo "  UF2 not built - run ./build.sh first"
+    ((FAIL++))
+fi
+
+echo ""
+echo "=== Results: $PASS passed, $FAIL failed ==="
+[ "$FAIL" -eq 0 ] && echo "All tests passed."

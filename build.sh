@@ -36,6 +36,20 @@ sed -i 's|#include <semaphore.h>|#include "semaphore.h"|' "${TMP_DIR}/hello.c"
 sed -i 's|#include <stdatomic.h>|#include "stdatomic.h"|' "${TMP_DIR}/hello.c"
 # Enable POSIX thread + timer declarations in newlib
 sed -i 's|#define _POSIX_C_SOURCE 200809L|#define _POSIX_C_SOURCE 200809L\n#define _POSIX_THREADS 1\n#define _POSIX_TIMERS 1|' "${TMP_DIR}/hello.c"
+# Add infinite loop after print to keep USB CDC alive
+python3 -c "
+import sys
+data = open('${TMP_DIR}/hello.c').read()
+# Replace only the first 'sage_gc_shutdown();' block (in main)
+old = '    sage_gc_shutdown();\n    return 0;\n}'
+new = '    sage_gc_shutdown();\n    while (1) { tight_loop_contents(); }\n    return 0;\n}'
+data = data.replace(old, new, 1)
+# Add early printf before Sage runtime init for debug
+old2 = '    stdio_init_all();\n    sleep_ms(2000);'
+new2 = '    stdio_init_all();\n    printf(\"\\\\n=== SagePico booting... ===\\\\n\");\n    sleep_ms(2000);'
+data = data.replace(old2, new2)
+open('${TMP_DIR}/hello.c', 'w').write(data)
+"
 echo "  Patched problematic includes"
 
 echo "[3/5] Writing CMakeLists.txt..."
