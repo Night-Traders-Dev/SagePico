@@ -643,8 +643,10 @@ static void sage_repl_eval(const char* cmd) {
                 SageValue v = sage_repl_parse_expr(cmd, &pos);
                 sage_dict_set(sage_repl_vars.as.dict, ident, v);
                 printf("  %s = ", ident);
+                con_printf("  %s = ", ident);
                 sage_print_value(v);
                 printf("\n");
+                con_putchar_raw('\n');
                 return;
             }
         }
@@ -655,16 +657,22 @@ static void sage_repl_eval(const char* cmd) {
     if (result.type != SAGE_TAG_NIL) {
         sage_print_value(result);
         printf("\n");
+        con_putchar_raw('\n');
     }
 }
 
 /* Mini REPL using printf/scanf over USB CDC */
 static void sage_repl(void) {
     printf("\n=== Sage REPL ===\n");
+    con_printf("\n=== Sage REPL ===\n");
     printf("Type expressions: 2+2, gpio_put(7,1), let x=42, x*2\n");
+    con_puts("Type expressions: 2+2, gpio_put(7,1), let x=42, x*2\n");
     printf("Builtins: gpio_init, gpio_set_dir, gpio_put, gpio_get, gpio_pull_up,\n");
+    con_puts("Builtins: gpio_init, gpio_set_dir, gpio_put, gpio_get, gpio_pull_up,\n");
     printf("          gpio_pull_down, gpio_set_function, sleep_ms, sleep_us, time_us\n");
+    con_puts("          gpio_pull_down, gpio_set_function, sleep_ms, sleep_us, time_us\n");
     printf("Ctrl+C to exit REPL, resume display\n\n");
+    con_puts("Ctrl+C to exit REPL, resume display\n\n");
 
     sage_repl_init();
     char line[256];
@@ -673,14 +681,16 @@ static void sage_repl(void) {
 
     while (repl_active) {
         printf(">>> ");
+        con_puts(">>> ");
         idx = 0;
         while (1) {
             int c = getchar_timeout_us(100000); /* 100ms timeout for LED heartbeat */
             if (c == PICO_ERROR_TIMEOUT) continue;
             if (c == '\r' || c == '\n') {
-                if (idx > 0) { line[idx] = 0; printf("\n"); break; }
+                if (idx > 0) { line[idx] = 0; printf("\n"); con_putchar_raw('\n'); break; }
             } else if (c == 0x03) { /* Ctrl+C */
                 printf("^C\nREPL exit, resuming display\n");
+                con_puts("^C\nREPL exit, resuming display\n");
                 repl_active = 0;
                 break;
             } else if (c == 0x08 || c == 0x7f) { /* Backspace */
@@ -688,6 +698,7 @@ static void sage_repl(void) {
             } else if (idx < 250 && c >= 32 && c < 127) {
                 line[idx++] = (char)c;
                 putchar(c);
+                con_putchar_raw((char)c);
             }
         }
         if (!repl_active) break;
