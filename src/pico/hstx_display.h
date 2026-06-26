@@ -8,8 +8,12 @@
 #include "pico/stdlib.h"
 #include "hardware/structs/hstx_ctrl.h"
 #include "hardware/structs/hstx_fifo.h"
+#include "hardware/structs/resets.h"
+#include "hardware/structs/clocks.h"
 #include "hardware/clocks.h"
+#include "hardware/resets.h"
 #include "hardware/i2c.h"
+#include "hardware/platform.h"
 #include <string.h>
 
 /* ================================================================
@@ -97,10 +101,31 @@ void display_init(void) {
     disp_palette[6]  = 0xf81f;  /* magenta */
     disp_palette[7]  = 0x07ff;  /* cyan */
 
-    /* Reset HSTX, then enable with CLKDIV for ~75 MHz pixel clock */
-    hx_write(HSTX_CTRL_CSR_OFFSET, 0);
+    /* 1. Take HSTX out of reset */
+    unreset_block_wait(RESET_HSTX);
+
+    /* 2. Enable HSTX clock (CLK_HSTX_CTRL) */
+    uint32_t clk_reg = CLOCKS_CLK_HSTX_CTRL_RESET;
+    hw_write_masked(
+        &clocks_hw->clk[clk_hstx].ctrl,
+        CLOCKS_CLK_HSTX_CTRL_ENABLE_BITS,
+        CLOCKS_CLK_HSTX_CTRL_ENABLE_BITS
+    );
+
+    /* 3. Set GPIO functions: 12=clk, 13-15=TMDS data lanes */
+    gpio_set_function(12, GPIO_FUNC_HSTX);  /* clock */
+    gpio_set_function(13, GPIO_FUNC_HSTX);  /* data 0 (blue) */
+    gpio_set_function(14, GPIO_FUNC_HSTX);  /* data 1 (green) */
+    gpio_set_function(15, GPIO_FUNC_HSTX);  /* data 2 (red) */
+
+    /* 4. Configure HSTX CSR for TMDS/DVI output */
+    hx_write(HSTX_CTRL_CSR_OFFSET, 0);  /* disable during config */
     sleep_us(100);
-    uint32_t csr = (1u << HSTX_CTRL_CSR_CLKDIV_LSB) | HSTX_CTRL_CSR_EN_BITS;
+
+    /* CSR: CLKDIV=2 (150MHz/4=37.5MHz pixel clock), enable TMDS mode */
+    uint32_t csr = (2u << HSTX_CTRL_CSR_CLKDIV_LSB)
+                 | (0u << HSTX_CTRL_CSR_CLKPHASE_LSB)
+                 | HSTX_CTRL_CSR_EN_BITS;
     hx_write(HSTX_CTRL_CSR_OFFSET, csr);
 }
 
