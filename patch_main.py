@@ -17,7 +17,7 @@ data = re.sub(r'    sage_gc_shutdown\(\);\n', '', data)
 # 2. Includes
 data = data.replace(
     '#include "pico/stdlib.h"',
-    '#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"'
+    '#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"'
 )
 
 # 3. Strip old FFI stubs (they use dlopen/dlsym which doesn't work on baremetal)

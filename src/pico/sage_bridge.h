@@ -365,6 +365,45 @@ static SageValue sage_ffi_flash_keys_wrap(int argc, SageValue* argv) {
         sage_array_push_raw(arr.as.array, sage_string(keys[i]));
     return arr;
 }
+/* PIO wrappers */
+static SageValue sage_ffi_pio_claim_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    return sage_bool(sage_pio_claim(sv_int(argv[0]), sv_int(argv[1])));
+}
+static SageValue sage_ffi_pio_put_wrap(int argc, SageValue* argv) {
+    sage_pio_sm_put(sv_int(argv[0]), sv_int(argv[1]), (uint32_t)sv_int(argv[2]));
+    return sage_nil();
+}
+static SageValue sage_ffi_pio_get_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    return sage_number((double)sage_pio_sm_get(sv_int(argv[0]), sv_int(argv[1])));
+}
+static SageValue sage_ffi_pio_set_pins_wrap(int argc, SageValue* argv) {
+    sage_pio_sm_set_pins(sv_int(argv[0]), sv_int(argv[1]), sv_int(argv[2]), sv_int(argv[3]), sv_int(argv[4]));
+    return sage_nil();
+}
+static SageValue sage_ffi_pio_set_enabled_wrap(int argc, SageValue* argv) {
+    sage_pio_sm_set_enabled(sv_int(argv[0]), sv_int(argv[1]), sv_int(argv[2]));
+    return sage_nil();
+}
+static SageValue sage_ffi_pio_set_clkdiv_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    sage_pio_sm_set_clkdiv(sv_int(argv[0]), sv_int(argv[1]), (float)sv_num(argv[2]));
+    return sage_nil();
+}
+static SageValue sage_ffi_pio_clear_fifos_wrap(int argc, SageValue* argv) {
+    sage_pio_sm_clear_fifos(sv_int(argv[0]), sv_int(argv[1]));
+    return sage_nil();
+}
+static SageValue sage_ffi_ws2812_init_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    return sage_number((double)sage_ws2812_init(sv_int(argv[0]), sv_int(argv[1])));
+}
+static SageValue sage_ffi_ws2812_put_wrap(int argc, SageValue* argv) {
+    sage_ws2812_put(sv_int(argv[0]), sv_int(argv[1]),
+                   (uint8_t)sv_int(argv[2]), (uint8_t)sv_int(argv[3]), (uint8_t)sv_int(argv[4]));
+    return sage_nil();
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -385,6 +424,15 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "flash_load",  sage_ffi_flash_load_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "flash_del",   sage_ffi_flash_del_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "flash_keys",  sage_ffi_flash_keys_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_claim",     sage_ffi_pio_claim_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_put",       sage_ffi_pio_put_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_get",       sage_ffi_pio_get_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_set_pins",  sage_ffi_pio_set_pins_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_set_enabled", sage_ffi_pio_set_enabled_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_set_clkdiv", sage_ffi_pio_set_clkdiv_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pio_clear_fifos", sage_ffi_pio_clear_fifos_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "ws2812_init",   sage_ffi_ws2812_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "ws2812_put",    sage_ffi_ws2812_put_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
