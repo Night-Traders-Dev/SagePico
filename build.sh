@@ -88,6 +88,7 @@ target_link_libraries(hello pico_stdlib)
 pico_enable_stdio_usb(hello 1)
 pico_enable_stdio_uart(hello 1)
 ${SHIMS_OPT}
+target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico")
 pico_add_extra_outputs(hello)
 CMAKEEOF
 
