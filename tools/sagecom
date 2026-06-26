@@ -1,0 +1,20 @@
+#!/bin/bash
+# sagecom — Sage Serial Terminal for SagePico
+# Installed to /usr/local/bin, sources live in SagePico project
+
+SAGECOM="/home/kraken/Devel/SagePico/src/sagecom.sage"
+SAGE="/home/kraken/Devel/SagePico/deps/sagelang/sage"
+
+if [ ! -f "$SAGE" ]; then
+    SAGE="$(which sage 2>/dev/null)"
+fi
+if [ ! -f "$SAGE" ]; then
+    echo "sagecom: cannot find Sage interpreter" >&2
+    exit 1
+fi
+if [ ! -f "$SAGECOM" ]; then
+    echo "sagecom: cannot find sagecom.sage at $SAGECOM" >&2
+    exit 1
+fi
+
+exec "$SAGE" "$SAGECOM" "$@"
