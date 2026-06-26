@@ -4,23 +4,28 @@
 #ifndef SAGE_ARM_INIT_H
 #define SAGE_ARM_INIT_H
 
-/* ARM-specific boot init (called after stdio_init_all):
-   - GPIO LED heartbeat on pin 7
-   - No special interrupt setup needed (NVIC handles it) */
+#include "hardware/resets.h"
+#include "hardware/irq.h"
+
+/* ARM-specific pre-stdio init: reset USB before init.
+   The Sage runtime's large BSS/heap may overlap USB DMA buffers;
+   an explicit USB reset ensures clean state. */
+static inline void sage_arch_pre_init(void) {
+    reset_block(RESETS_RESET_USBCTRL_BITS);
+    unreset_block_wait(RESETS_RESET_USBCTRL_BITS);
+}
+
+/* ARM-specific boot init (called after stdio_init_all) */
 static inline void sage_arch_init(void) {
     gpio_init(7);
     gpio_set_dir(7, GPIO_OUT);
     gpio_put(7, 0);
 }
 
-/* ARM-specific pre-stdio init (called before stdio_init_all) */
-static inline void sage_arch_pre_init(void) {
-    /* Nothing needed — NVIC is initialized by SDK runtime */
-}
-
-/* ARM-specific post-stdio init (called after stdio_init_all) */
+/* ARM-specific post-stdio init */
 static inline void sage_arch_post_init(void) {
-    /* Nothing needed — USB interrupts are handled by NVIC */
+    /* Ensure USB IRQ is enabled (NVIC handles priority) */
+    irq_set_enabled(USBCTRL_IRQ, true);
 }
 
 #endif
