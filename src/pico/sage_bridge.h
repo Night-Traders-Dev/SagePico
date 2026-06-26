@@ -488,6 +488,17 @@ static SageValue sage_ffi_spi_init_wrap(int argc, SageValue* argv) {
 static SageValue sage_ffi_spi_xfer_wrap(int argc, SageValue* argv) {
     return sage_nv_spi_xfer(argv[0]);
 }
+/* Clock wrappers */
+static SageValue sage_ffi_clock_init_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; sage_clock_init(); return sage_nil();
+}
+static SageValue sage_ffi_clock_get_wrap(int argc, SageValue* argv) {
+    const char* s = sage_clock_get();
+    return s ? sage_string(s) : sage_string("");
+}
+static SageValue sage_ffi_clock_set_wrap(int argc, SageValue* argv) {
+    return sage_bool(sage_clock_set(sv_str(argv[0])));
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -532,6 +543,9 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "i2c_read",      sage_ffi_i2c_read_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "spi_init",      sage_ffi_spi_init_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "spi_xfer",      sage_ffi_spi_xfer_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "clock_init",    sage_ffi_clock_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "clock_get",     sage_ffi_clock_get_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "clock_set",     sage_ffi_clock_set_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 

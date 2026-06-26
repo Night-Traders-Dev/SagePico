@@ -18,7 +18,7 @@ data = re.sub(r'    sage_gc_shutdown\(\);\n', '', data)
 arch_include = f'#include "init.h"'  # resolves from src/{arch}/
 data = data.replace(
     '#include "pico/stdlib.h"',
-    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"\n{arch_include}'
+    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"\n#include "rtc_bridge.h"\n{arch_include}'
 )
 
 # 3. Strip generated FFI stubs (all variants from v3.8.7 to v3.9.2)
