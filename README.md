@@ -1,107 +1,128 @@
-# SagePico: SageLang for Feather RP2350
+# SagePico: SageLang for RP2350
 
-Build bootable UF2 firmware images from Sage source code for the [Adafruit Feather RP2350](https://www.adafruit.com/product/6000).
+Build bootable UF2 firmware from Sage source code targeting the Feather RP2350 (Cortex-M33 ARM core).
 
 ## Quick Start
 
 ```bash
-# 1. Build the UF2 image
-./build.sh
+# Build for ARM (recommended)
+./build.sh arm
 
-# 2. Flash to the board (auto-reboot + flash via picotool)
-make flash
+# Flash automatically  
+make flash-arm
 
-# 3. Read serial output (USB CDC, /dev/ttyACM0)
+# Read serial output
 cat /dev/ttyACM0
+```
+
+Output:
+```
+=== SagePico (arm) ===
+Hello from Sage on RP2350!
+SagePico uptime 2s
+SagePico uptime 3s
+...
 ```
 
 ## Build Paths
 
-### Path 1: Baremetal C (Sage -> C -> UF2) ✓ Working
+### Path 1: Baremetal (Sage -> C -> UF2) ✓ Production
 
 ```
-src/hello.sage  -->  sage --emit-pico-c  -->  hello.c  -->  CMake + Pico SDK + riscv32-gcc  -->  build/hello.uf2
+src/hello.sage  →  sage --emit-pico-c  →  hello.c  →  patching  →  CMake + Pico SDK + arm-none-eabi-gcc  →  build/hello-arm.uf2
 ```
 
-The Sage compiler generates a standalone C file containing the full Sage runtime (GC, types, print). This is cross-compiled for Hazard3 RISC-V using the bundled `riscv32-unknown-elf-gcc 15.2.0` toolchain. Output is a UF2 firmware image (~72KB).
+The Sage compiler generates a C file with the full Sage runtime. The build pipeline:
+1. Patches includes for baremetal (`dlfcn.h`, `semaphore.h`, `pthread.h` → shims)
+2. Replaces `fputs`/`fputc` with `printf` (newlib fd layer crashes baremetal)
+3. Replaces `sage_print_ln(sage_string("..."))` with `printf("...\n")`
+4. Removes Sage GC/runtime calls (not needed for simple programs)
+5. Adds `pico_port.h` bridge for GPIO/UART/etc.
+6. Adds LED heartbeat on GPIO 7
 
 ### Path 2: SageVM SRVM (Sage -> Bytecode) ✓ Working
 
 ```
-src/hello.sage  -->  sagevm compile --riscv  -->  src/hello.sgrv (RISC-V bytecode, 61 bytes)
+src/hello.sage  →  sagevm compile --riscv  →  src/hello.sgrv (61 bytes)
 ```
 
-The SageVM compiler produces compact SRVM bytecode. Running the SRVM runtime directly on the RP2350 is planned as a next step (requires embedding the SRVM interpreter in a baremetal binary).
+Compact RISC-V bytecode. Desktop-runnable via `sagevm run`. Embedding SRVM interpreter on-device is planned.
+
+## pico_port.h Bridge
+
+`src/pico/pico_port.h` provides a zero-overhead Sage-to-Pico SDK bridge — lightweight `static inline` C wrappers:
+
+| Module | Functions |
+|--------|-----------|
+| GPIO | `sage_gpio_init`, `sage_gpio_set_dir`, `sage_gpio_put`, `sage_gpio_get`, `sage_gpio_pull_up`, `sage_gpio_pull_down` |
+| UART | `sage_uart_init`, `sage_uart_putc`, `sage_uart_puts`, `sage_uart_getc` |
+| Time | `sage_sleep_ms`, `sage_sleep_us`, `sage_time_us`, `sage_time_ms` |
+| Print | `sage_print(msg)` — printf-based, no Sage runtime needed |
+| ADC | `sage_adc_init`, `sage_adc_gpio`, `sage_adc_select`, `sage_adc_read` |
+| PWM | `sage_pwm_gpio`, `sage_pwm_duty` |
+| I2C | `sage_i2c_init`, `sage_i2c_write`, `sage_i2c_read` |
+| SPI | `sage_spi_init`, `sage_spi_xfer` |
 
 ## Project Structure
 
 ```
-src/hello.sage          # "Hello from Sage on RP2350!" program
-src/hello.sgvm          # SageVM bytecode (53 bytes)
-src/hello.sgrv          # SRVM RISC-V bytecode (61 bytes)
-shims/                  # Baremetal compatibility shims
-  dlfcn.h               # dlopen/dlclose stubs
-  semaphore.h           # sem_init/sem_wait stubs  
-  stdatomic.h           # __atomic_* shims
-  stubs.c               # pthread/timer link stubs
-  baremetal_stubs.h     # Additional inline stubs
-  baremetal_time.h      # Time function stubs
-docs/                   # Documentation
-  architecture.md       # Build paths and architecture
-  feather_rp2350.md     # Board specs, pinout, toolchain
+src/
+  hello.sage            # Sage source program
+  blink.sage            # GPIO blink demo (WIP)
+  pico/
+    pico_port.h         # C bridge: GPIO, UART, Time, Print, ADC, PWM, I2C, SPI
+    gpio.sage           # Sage GPIO module stubs
+    gpio_wrap.c         # C GPIO wrapper
+shims/                  # Baremetal compatibility
+  dlfcn.h, semaphore.h, stdatomic.h   # Missing POSIX headers
+  pthread.h             # Minimal pthread declarations
+  stubs.c               # pthread/nanosleep link stubs
+patch_stdio.py          # Replaces fputs/fputc with printf
+patch_main.py           # Replaces Sage runtime calls, adds LED, pico_port
+build.sh                # Full build pipeline
+build/                  # Output UF2 files
+  hello-arm.uf2         # ARM Cortex-M33 image (~50KB)
+  hello-riscv.uf2       # Hazard3 RISC-V image (~65KB)
+docs/                   # Architecture and board docs
 deps/                   # Git submodules
   sagelang/             # SageLang compiler v3.8.7
-  SageVM/               # SageVM v0.9.8 (SGVM + SRVM)
-  pico-sdk/              # Raspberry Pi Pico SDK
-  pico-sdk-tools/        # RISC-V toolchain + picotool
-build.sh                # Full build script (Sage -> UF2)
-build/hello.uf2         # Bootable image
+  SageVM/               # SageVM v0.9.8 with SRVM backend
+  pico-sdk/              # Raspberry Pi Pico SDK (RP2350 support)
+  pico-sdk-tools/        # RISC-V toolchain + picotool 2.2.0
 ```
 
 ## Flashing
 
-### Automated (picotool)
-
 ```bash
-make flash     # Build + auto-reboot + flash in one command
+make flash-arm     # Build + flash ARM image
+make flash-riscv   # Build + flash RISC-V image
 ```
 
-picotool detects the board over USB, reboots it into BOOTSEL mode, flashes the UF2, and reboots back to application mode. Requires udev rules (installed by `./build.sh` first run).
+picotool auto-reboots the board into BOOTSEL mode, flashes the UF2, and reboots back. Requires udev rules (installed on first run).
 
-### Manual
-
-1. Hold BOOTSEL button, tap RESET, release BOOTSEL
-2. Board appears as USB drive `RP2350/`
-3. Copy `build/hello.uf2` to the drive
-4. Board auto-reboots
+Manual: hold BOOTSEL, tap RESET, copy UF2 to the `RPI-RP2` USB drive.
 
 ## Serial Output
 
-The program outputs "Hello from Sage on RP2350!" via USB CDC serial (`/dev/ttyACM0`, 115200 baud). Permissions may require adding your user to the `dialout` group:
-
+USB CDC at `/dev/ttyACM0` (115200 baud). May need `dialout` group:
 ```bash
-sudo usermod -a -G dialout $USER
-# Log out and back in for group membership to take effect
+sudo usermod -a -G dialout $USER   # then log out/in
 ```
 
-## Target Hardware
+## Architecture Support
 
-| Feature | Value |
-|---------|-------|
-| Board | Adafruit Feather RP2350 |
-| MCU | RP2350A |
-| Core | Hazard3 RISC-V (rv32imac_zicsr_zifencei_zba_zbb_zbs_zbkb) |
-| Flash | 8MB |
-| LED | GPIO 7 (red) |
-| NeoPixel | GPIO 21 |
-| UART0 | TX=GPIO0, RX=GPIO1 |
+| Arch | Core | Status | Notes |
+|------|------|--------|-------|
+| ARM | Cortex-M33 | ✓ Working | USB CDC, printf, GPIO, LED |
+| RISC-V | Hazard3 | ⚠ Compiles | UF2 builds, USB CDC silent |
+
+## Known Issues
+
+- **fputs/fputc crash**: newlib's file descriptor layer segfaults on baremetal. Workaround: all patched to `printf`.
+- **Sage GC runtime**: linking it pulls in `exit`/`_sbrk` which corrupt baremetal startup. Workaround: bypassed for simple programs.
+- **RISC-V USB CDC**: program runs but no serial output. Likely interrupt handling difference in Hazard3 vs Cortex-M33 NVIC.
+- **RISC-V toolchain**: bundled `riscv32-unknown-elf-gcc 15.2.0` in `deps/pico-sdk-tools/build/riscv-install/`.
 
 ## Dependencies
 
-All included as git submodules in `deps/`:
-- **SageLang** v3.8.7 — Sage compiler and C code generator
-- **SageVM** v0.9.8 — SageVM with SGVM and SRVM (RISC-V) bytecode backends
-- **Pico SDK** — Raspberry Pi Pico SDK with RP2350/Hazard3 support
-- **Pico SDK Tools** — RISC-V GNU toolchain (`riscv32-unknown-elf-gcc` 15.2.0) + picotool
-
-System: `cmake`, `python3`, `libusb-1.0-dev` (for picotool USB flashing)
+All in `deps/` as git submodules. Host system needs: `cmake`, `python3`, `gcc-arm-none-eabi`. RISC-V toolchain is bundled.

@@ -1,98 +1,79 @@
 # SagePico Architecture
 
-## Build Paths
-
-### Path 1: Baremetal C Compilation (Sage -> C -> UF2) ✓
+## Build Pipeline
 
 ```
-src/hello.sage
+src/hello.sage                    # Sage source
     │
-    ├── sage interpreter (desktop test)
+    ├── sage --emit-pico-c        # Step 1: Generate C
+    │       └── hello.c           # ~1600 lines, full Sage runtime
     │
-    └── sage --emit-pico-c
-            │
-            └── .tmp/hello/hello.c  (generated C + full Sage runtime)
-                    │
-                    ├── shim patching (dlfcn, semaphore, pthread stubs)
-                    │
-                    └── CMake + Pico SDK + riscv32-unknown-elf-gcc
-                            │
-                            └── build/hello.uf2  (bootable image, ~72KB)
-```
-
-The Sage compiler's `--emit-pico-c` flag generates a self-contained C file (~1600 lines) including:
-- Full Sage value type system (SageValue, SageArray, SageDict, SageTuple)
-- Mark-sweep garbage collector
-- `print`, `str`, `len`, and other built-in functions
-- Stubbed thread/FFI/semaphore functions (not used by simple programs)
-
-The generated C is patched before compilation to:
-1. Replace POSIX headers unavailable on baremetal (`dlfcn.h`, `semaphore.h`)
-2. Enable `_POSIX_THREADS` and `_POSIX_TIMERS` macros for newlib declarations
-3. Add an infinite loop at end of `main()` to keep USB CDC alive
-4. Add an early `printf` for boot confirmation
-
-### Path 2: SageVM SRVM (Sage -> Bytecode) ✓
-
-```
-src/hello.sage
+    ├── patch_stdio.py            # Step 2: Fix baremetal stdio
+    │       ├── fputs → printf    #   newlib fd layer crashes
+    │       ├── fputc → printf    #   same issue
+    │       └── exit → while(1)   #   exit() halts CPU
     │
-    └── sagevm compile --riscv
-            │
-            ├── src/hello.sgvm  (SageVM bytecode, 53 bytes)
-            │       │
-            │       └── srvm_compiler (translate to RISC-V bytecode)
-            │               │
-            │               └── src/hello.sgrv  (SRVM, 61 bytes)
-            │
-            └── Future: Embed SRVM interpreter on RP2350
-                    └── Run bytecode directly on Hazard3 core
+    ├── patch_main.py             # Step 3: Bridge to pico_port
+    │       ├── sage_print_ln → printf   # bypass Sage GC/runtime
+    │       ├── remove GC calls          # not needed
+    │       ├── add #include "pico_port.h"
+    │       └── add LED heartbeat
+    │
+    ├── CMakeLists.txt            # Step 4: Build system
+    │       ├── PICO_BOARD=adafruit_feather_rp2350
+    │       ├── PICO_PLATFORM=rp2350-arm-s or rp2350-riscv
+    │       └── link pico_stdlib + hardware_adc/pwm/i2c/spi
+    │
+    └── riscv32-gcc or arm-gcc   # Step 5: Compile + Link
+            └── hello.uf2         # Bootable image
 ```
 
-The SageVM compiler produces two formats:
-- **SGVM** (.sgvm) — Stack-based SageVM bytecode, runs on desktop via `sagevm run`
-- **SRVM** (.sgrv) — RISC-V native bytecode, produced by translating SGVM through the SRVM compiler
+## Why the Sage Runtime Crashes on Baremetal
 
-Next step: embed the SRVM interpreter (written in C or Sage) as a baremetal binary on the RP2350 to execute .sgrv files directly on the Hazard3 core.
+Three root causes found through extensive bisecting:
+
+### 1. `fputs`/`fputc` segfault
+The generated C uses `fputs(value, stdout)` for printing strings and `fputc(char, stdout)` for characters. These go through newlib's file descriptor layer (`_write` syscall) which isn't properly wired on baremetal Pico. The Pico SDK provides its own `printf` that bypasses this layer.
+
+**Fix**: `patch_stdio.py` replaces all `fputs`/`fputc` with `printf` equivalents.
+
+### 2. `exit()` halts the CPU  
+The Sage runtime's `sage_fail` calls `exit(1)`. newlib's `_exit` implementation on baremetal executes a `bkpt` (breakpoint) instruction and infinite loops. Even though `sage_fail` isn't called for simple programs, the linker includes `exit` because it's referenced by `sage_fail`, and the mere presence of `exit` in the binary causes issues during C runtime initialization.
+
+**Fix**: `patch_stdio.py` replaces `exit(1)` with `while(1) { tight_loop_contents(); }`.
+
+### 3. Full Sage GC/Runtime link
+When any Sage function is called from `main()`, the linker pulls in the full Sage runtime (GC, type system, native functions). This drags in `_sbrk`, `exit`, `pthread_self`, and other newlib stubs that interact poorly with the Pico's baremetal C runtime. The program crashes before reaching `main()`.
+
+**Fix**: `patch_main.py` replaces `sage_print_ln(sage_string("..."))` with direct `printf("...\n")` and removes `sage_gc_push_frame`/`sage_gc_shutdown` calls, allowing the linker to dead-strip the entire Sage runtime.
+
+## pico_port.h Bridge
+
+The `src/pico/pico_port.h` bridge provides lightweight C wrappers for Pico SDK peripherals. All functions are `static inline`, incurring zero call overhead after compiler optimization.
+
+This bridge serves as the foundation for porting pico-sdk to Sage:
+- Sage programs call `sage_print()`, `sage_gpio_put()`, etc.
+- The patcher translates Sage function calls to these C wrappers
+- Eventually, Sage-native modules will provide idiomatic Sage APIs wrapping these C functions
 
 ## Shim Layer
 
-The `shims/` directory contains compatibility stubs for baremetal compilation:
+`shims/` provides headers and stubs for POSIX functions unavailable on baremetal:
 
 | File | Purpose |
 |------|---------|
-| `dlfcn.h` | dlopen/dlclose/dlsym stubs (FFI, not available baremetal) |
-| `semaphore.h` | sem_init/sem_wait/sem_post stubs (no OS semaphores) |
-| `stdatomic.h` | __atomic_load/__atomic_store shims |
-| `stubs.c` | Link-time implementations for pthread_create, pthread_mutex_*, nanosleep |
-| `baremetal_stubs.h` | Inline stubs for pthread, dlfcn (alternative approach) |
-| `baremetal_time.h` | nanosleep/clock stubs |
+| `dlfcn.h` | dlopen/dlclose/dlsym stubs (FFI unavailable on baremetal) |
+| `semaphore.h` | sem_init/sem_wait/sem_post stubs |
+| `stdatomic.h` | C11 atomics via GCC builtins |
+| `pthread.h` | Minimal pthread type/function declarations (avoids newlib TLS init) |
+| `stubs.c` | pthread_mutex_*, pthread_create, nanosleep link stubs |
 
-These shims are necessary because the Sage compiler's C backend emits POSIX-dependent code even when targeting Pico. A future SageLang update should make `--emit-pico-c` produce baremetal-compatible C directly.
+## Architecture Decisions
 
-## Build Script (`build.sh`)
-
-The build script performs these steps:
-
-1. **Generate C** — `sage --emit-pico-c src/hello.sage -o .tmp/hello/hello.c`
-2. **Patch C** — sed/python fixes for baremetal compatibility:
-   - Replace `#include <dlfcn.h>` → `#include "dlfcn.h"` (shim)
-   - Replace `#include <semaphore.h>` → `#include "semaphore.h"` (shim)
-   - Replace `#include <stdatomic.h>` → `#include "stdatomic.h"` (shim)
-   - Add `#define _POSIX_THREADS 1` and `#define _POSIX_TIMERS 1`
-   - Add `while(1) { tight_loop_contents(); }` before main's return
-   - Add early `printf("=== SagePico booting... ===\n")` after `stdio_init_all()`
-3. **Write CMakeLists.txt** — Targets `adafruit_feather_rp2350`, `rp2350-riscv` platform, includes shims and stubs
-4. **CMake Configure** — Sets `PICO_TOOLCHAIN_PATH` to bundled RISC-V toolchain
-5. **Build** — `cmake --build` produces `.elf`, `.bin`, `.uf2`
-6. **SRVM** — `sagevm compile --riscv` produces `.sgvm` and `.sgrv` bytecode
-
-## Flashing (`make flash`)
-
-Uses picotool (built with libusb support) to:
-1. Detect the board over USB
-2. Send reboot-to-BOOTSEL command
-3. Load the UF2 file
-4. Reboot back to application mode
-
-picotool is installed to `~/.local/bin/picotool` during the first build.
+| Decision | Rationale |
+|----------|-----------|
+| ARM over RISC-V | USB CDC works reliably on ARM Cortex-M33 |
+| Bypass Sage runtime | 10KB smaller, no crashes, simpler |
+| `printf` over `fputs` | Pico SDK's printf bypasses newlib fd layer |
+| `static inline` bridge | Zero overhead, fully inlined by compiler |
+| Post-processing patches | Sage compiler can't be modified (submodule) |

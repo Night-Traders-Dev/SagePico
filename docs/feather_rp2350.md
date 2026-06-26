@@ -1,18 +1,17 @@
-# Feather RP2350 with Hazard3 RISC-V
+# Feather RP2350 Board Reference
 
-The [Adafruit Feather RP2350](https://www.adafruit.com/product/6000) uses the RP2350A microcontroller with dual-core Arm Cortex-M33 and dual-core Hazard3 RISC-V processors.
+The [Adafruit Feather RP2350](https://www.adafruit.com/product/6000) uses the RP2350A with dual Cortex-M33 ARM and dual Hazard3 RISC-V cores.
 
-## Board Specs
+## Specifications
 
 | Feature | Value |
 |---------|-------|
 | MCU | RP2350A |
 | ARM Cores | 2x Cortex-M33 @ 150MHz |
 | RISC-V Cores | 2x Hazard3 @ 150MHz |
+| SRAM | 520KB |
 | Flash | 8MB |
-| PSRAM | None (RP2350A variant) |
 | USB | USB-C (native USB 1.1) |
-| GPIO | 21 pins (Feather format) |
 | LED | GPIO 7 (red) |
 | NeoPixel | GPIO 21 |
 
@@ -20,27 +19,35 @@ The [Adafruit Feather RP2350](https://www.adafruit.com/product/6000) uses the RP
 
 | Pin | Function | Notes |
 |-----|----------|-------|
-| 0 | UART0 TX | Default serial TX |
-| 1 | UART0 RX | Default serial RX |
-| 2 | I2C1 SDA | Default I2C data |
-| 3 | I2C1 SCL | Default I2C clock |
+| 0 | UART0 TX | Default serial |
+| 1 | UART0 RX | Default serial |
+| 2 | I2C1 SDA | |
+| 3 | I2C1 SCL | |
+| 4 | I2C0 SDA | pico_port default |
+| 5 | I2C0 SCL | pico_port default |
 | 7 | LED | Red LED (active high) |
-| 20 | SPI0 RX | Default SPI MISO |
-| 21 | NeoPixel | WS2812 addressable LED |
-| 22 | SPI0 SCK | Default SPI clock |
-| 23 | SPI0 TX | Default SPI MOSI |
+| 16 | SPI0 RX | MISO |
+| 17 | SPI0 CSn | |
+| 18 | SPI0 SCK | |
+| 19 | SPI0 TX | MOSI |
+| 20 | SPI0 RX alt | |
+| 21 | NeoPixel | WS2812 |
+| 22 | SPI0 SCK alt | |
+| 23 | SPI0 TX alt | |
+| 26-29 | ADC0-3 | Analog inputs |
 
-## Hazard3 RISC-V Architecture
+## Build Configuration
 
-The Hazard3 is an open-source RISC-V core implementing RV32IMAC with:
-- `Zicsr` — Control and Status Register instructions
-- `Zifencei` — Instruction fetch fence
-- `Zba` — Address generation
-- `Zbb` — Basic bit manipulation
-- `Zbs` — Single-bit operations
-- `Zbkb` — Bit manipulation for cryptography
+### ARM (Cortex-M33) — Recommended
 
-### Build Configuration for Hazard3
+| Setting | Value |
+|---------|-------|
+| Platform | `rp2350-arm-s` |
+| Compiler | `pico_arm_cortex_m33_gcc` |
+| Triple | `arm-none-eabi` |
+| Install | `apt install gcc-arm-none-eabi` |
+
+### RISC-V (Hazard3) — Compiles, USB CDC WIP
 
 | Setting | Value |
 |---------|-------|
@@ -49,50 +56,26 @@ The Hazard3 is an open-source RISC-V core implementing RV32IMAC with:
 | Triple | `riscv32-unknown-elf` |
 | Arch | `rv32imac_zicsr_zifencei_zba_zbb_zbs_zbkb` |
 | ABI | `ilp32` |
-| Boot Stage2 | `compile_time_choice` (auto-detected from board) |
-
-### Toolchain
-
-The bundled toolchain lives at `deps/pico-sdk-tools/build/riscv-install/bin/`:
-- `riscv32-unknown-elf-gcc` (GCC 15.2.0)
-- `riscv32-unknown-elf-g++`
-- `riscv32-unknown-elf-ld` (GNU ld.bfd)
-- Full newlib standard library
-
-The toolchain is referenced via `PICO_TOOLCHAIN_PATH` when running CMake.
+| Toolchain | Bundled in `deps/pico-sdk-tools/build/riscv-install/` |
 
 ## Core Selection
 
-The RP2350 boots via the ARM Cortex-M33 ROM bootloader, then executes boot stage2. The stage2 configures the architecture selection register (ARCHSEL) to switch to Hazard3 RISC-V before jumping to the application.
-
-To build for ARM instead, use platform `rp2350-arm-s` and the `arm-none-eabi-gcc` toolchain (not bundled; install via `apt install gcc-arm-none-eabi`).
+The RP2350 boots ARM ROM → boot stage2 → ARCHSEL register → application. The boot stage2 selects ARM or RISC-V based on the platform setting at build time. The board defaults to ARM (`PICO_PLATFORM=rp2350` → expanded to `rp2350-arm-s`). For RISC-V, set `PICO_PLATFORM=rp2350-riscv`.
 
 ## UF2 Bootloader
 
-To enter bootloader mode:
-1. Hold BOOTSEL button while plugging in USB, OR
-2. Double-tap RESET while running, OR
-3. Use picotool: `picotool reboot -f -u`
+Enter bootloader mode:
+1. Hold BOOTSEL while plugging USB
+2. Double-tap RESET while running  
+3. `picotool reboot -f -u`
 
-The board appears as a USB mass storage device. Copy `.uf2` files to flash.
+Appears as USB mass storage drive. Copy `.uf2` to flash. Auto-reboots to application.
 
 ## USB CDC Serial
 
-The Feather uses the RP2350's built-in USB peripheral for serial output (no external USB-serial chip). The device appears as `/dev/ttyACM0` on Linux.
+Device: `/dev/ttyACM0`. No external USB-serial chip — uses RP2350's built-in USB peripheral via TinyUSB.
 
-**Permission note:** You may need to be in the `dialout` group to access `/dev/ttyACM0`:
+**Permissions**: add user to `dialout` group or install udev rules:
 ```bash
-sudo usermod -a -G dialout $USER
-# Log out and log back in
+sudo usermod -a -G dialout $USER   # then log out/in
 ```
-
-Or install udev rules for persistent access:
-```bash
-sudo cp deps/pico-sdk-tools/build/picotool/udev/60-picotool.rules /etc/udev/rules.d/
-sudo udevadm control --reload && sudo udevadm trigger
-```
-
-## Known Issues
-
-- **USB CDC on RISC-V**: The Hazard3 RISC-V core may require additional initialization for USB CDC to function reliably. If serial output is silent, try building for the ARM Cortex-M33 core (`rp2350-arm-s` platform) as a fallback.
-- **No PSRAM on RP2350A**: The Feather uses the RP2350A variant without PSRAM. Keep heap usage within 520KB SRAM.
