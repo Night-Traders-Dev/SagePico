@@ -90,13 +90,20 @@ int sagecom_open_serial(const char* path, int baud) {
 }
 
 /* Read from serial port, returns pointer to static buffer (valid until next call).
-   Returns empty string on error or no data. */
+   Strips carriage returns (\r) from output. */
 static char _serial_buf[256];
+static char _clean_buf[256];
 const char* sagecom_serial_read(int fd) {
     ssize_t n = read(fd, _serial_buf, sizeof(_serial_buf) - 1);
     if (n <= 0) return "";
     _serial_buf[n] = '\0';
-    return _serial_buf;
+    /* Strip \r characters */
+    int j = 0;
+    for (int i = 0; i < n; i++) {
+        if (_serial_buf[i] != '\r') _clean_buf[j++] = _serial_buf[i];
+    }
+    _clean_buf[j] = '\0';
+    return _clean_buf;
 }
 
 /* Read from stdin, returns pointer to static buffer. */
