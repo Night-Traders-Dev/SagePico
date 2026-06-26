@@ -851,7 +851,7 @@ static void sage_repl(void) {
     int idx = 0;
     int repl_active = 1;
     int in_multiline = 0;
-    static char multiline_buf[2048];
+    static char multiline_buf[2048];  /* static: avoid stack overflow */
     int ml_len = 0;
 
     while (repl_active) {
