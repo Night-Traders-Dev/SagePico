@@ -81,12 +81,14 @@ data = data.replace(
 # 4. Init with display + pattern
 data = data.replace(
     '    stdio_init_all();\n    sleep_ms(2000);',
-    '    /* RISC-V: explicit USB reset before stdio_init (Hazard3 IRQ timing) */\n'
+    '    /* RISC-V: explicit USB reset before stdio_init */\n'
     '    #ifdef __riscv\n'
     '    reset_block(RESETS_RESET_USBCTRL_BITS);\n'
     '    unreset_block_wait(RESETS_RESET_USBCTRL_BITS);\n'
     '    #endif\n'
     '    stdio_init_all();\n'
+    '    /* Wait for USB CDC enumeration (host needs ~1-2s to detect device) */\n'
+    '    sleep_ms(2500);\n'
     '    /* RISC-V: ensure USB IRQ priority after shared handler registration */\n'
     '    #ifdef __riscv\n'
     '    irq_set_priority(USBCTRL_IRQ, 0x00);\n'
