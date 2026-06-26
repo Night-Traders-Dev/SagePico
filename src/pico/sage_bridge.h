@@ -569,9 +569,14 @@ static SageValue sage_repl_parse_string(const char* s, int* pos) {
     return v;
 }
 
-/* Parse an identifier */
+/* Parse an identifier (must start with letter or underscore) */
 static int sage_repl_parse_ident(const char* s, int* pos, char* out, int max) {
     int start = *pos;
+    if (!((s[*pos] >= 'a' && s[*pos] <= 'z') ||
+          (s[*pos] >= 'A' && s[*pos] <= 'Z') ||
+          s[*pos] == '_'))
+        return 0;
+    (*pos)++;
     while ((s[*pos] >= 'a' && s[*pos] <= 'z') ||
            (s[*pos] >= 'A' && s[*pos] <= 'Z') ||
            (s[*pos] >= '0' && s[*pos] <= '9') ||
