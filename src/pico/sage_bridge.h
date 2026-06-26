@@ -9,12 +9,6 @@
      pico.gpio_put(25, 0)
 */
 
-/* Forward decls from flash_store.h (injected before us) */
-static void flash_store_init(void);
-static int  flash_store_put(const char* key, const uint8_t* val, uint16_t vlen);
-static int  flash_store_get(const char* key, uint8_t* val_out, uint16_t* vlen_out);
-static int  flash_store_del(const char* key);
-static void flash_store_keys(char keys[][64], int* count);
 static void flash_persist_repl_vars(void);
 
 /* ---- helpers ---- */
@@ -404,6 +398,62 @@ static SageValue sage_ffi_ws2812_put_wrap(int argc, SageValue* argv) {
                    (uint8_t)sv_int(argv[2]), (uint8_t)sv_int(argv[3]), (uint8_t)sv_int(argv[4]));
     return sage_nil();
 }
+/* DMA wrappers */
+static SageValue sage_ffi_dma_claim_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_dma_claim());
+}
+static SageValue sage_ffi_dma_config_wrap(int argc, SageValue* argv) {
+    sage_dma_config(sv_int(argv[0]), (uint32_t)sv_int(argv[1]), (uint32_t)sv_int(argv[2]),
+                    (uint32_t)sv_int(argv[3]), (uint)sv_int(argv[4]),
+                    sv_int(argv[5]), sv_int(argv[6]), sv_int(argv[7]));
+    return sage_nil();
+}
+static SageValue sage_ffi_dma_start_wrap(int argc, SageValue* argv) {
+    sage_dma_start(sv_int(argv[0])); return sage_nil();
+}
+static SageValue sage_ffi_dma_wait_wrap(int argc, SageValue* argv) {
+    sage_dma_wait(sv_int(argv[0])); return sage_nil();
+}
+static SageValue sage_ffi_dma_busy_wrap(int argc, SageValue* argv) {
+    return sage_bool(sage_dma_busy(sv_int(argv[0])));
+}
+static SageValue sage_ffi_dma_unclaim_wrap(int argc, SageValue* argv) {
+    sage_dma_unclaim(sv_int(argv[0])); return sage_nil();
+}
+/* GFX VM wrappers */
+static SageValue sage_ffi_gfx_init_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    static gfx_vm_t gfx_vm;
+    extern uint8_t disp_fb[400][640];
+    gfx_vm_init(&gfx_vm, (uint8_t*)disp_fb);
+    return sage_bool(1);
+}
+static SageValue sage_ffi_gfx_load_wrap(int argc, SageValue* argv) {
+    if (!gfx_active_vm) return sage_bool(0);
+    char key[16];
+    snprintf(key, sizeof(key), "gfx_%s", sv_str(argv[0]));
+    uint8_t buf[256]; uint16_t len = 0;
+    if (flash_store_get(key, buf, &len) != 0) return sage_bool(0);
+    if (len < 8) return sage_bool(0);
+    uint32_t prog_size, entry;
+    memcpy(&prog_size, buf, 4);
+    memcpy(&entry, buf + 4, 4);
+    if (prog_size + 8 > len) return sage_bool(0);
+    rvvm_load(&gfx_active_vm->vm, buf + 8, prog_size, entry);
+    return sage_bool(1);
+}
+static SageValue sage_ffi_gfx_run_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    if (!gfx_active_vm) return sage_nil();
+    gfx_vm_run_frame(gfx_active_vm);
+    return sage_number((double)gfx_active_vm->vm.cycles);
+}
+static SageValue sage_ffi_gfx_vblank_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    if (!gfx_active_vm) return sage_bool(0);
+    return sage_bool(gfx_active_vm->gpu_vblank);
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -433,6 +483,16 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "pio_clear_fifos", sage_ffi_pio_clear_fifos_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "ws2812_init",   sage_ffi_ws2812_init_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "ws2812_put",    sage_ffi_ws2812_put_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "dma_claim",     sage_ffi_dma_claim_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "dma_config",    sage_ffi_dma_config_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "dma_start",     sage_ffi_dma_start_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "dma_wait",      sage_ffi_dma_wait_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "dma_busy",      sage_ffi_dma_busy_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "dma_unclaim",   sage_ffi_dma_unclaim_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "gfx_init",      sage_ffi_gfx_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "gfx_load",      sage_ffi_gfx_load_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "gfx_run",       sage_ffi_gfx_run_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "gfx_vblank",    sage_ffi_gfx_vblank_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
