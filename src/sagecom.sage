@@ -86,12 +86,12 @@ if serial_fd < 0:
     ffi_int("sagecom_restore_stdin", [])
     return
 
-out(CYAN + BOLD)
-out("╔══════════════════════════════════════════╗\n")
-out("║  sagecom  " + port_path + " @ " + str(baud_rate) + "\n")
-out("║  Ctrl+A Q=quit C=clear R=reset          ║\n")
-out("╚══════════════════════════════════════════╝\n")
-out(RESET + "\n")
+# Drain any data that arrived during connection setup
+ffi_call(libtty, "sagecom_serial_drain", "void", [serial_fd])
+
+# Print banner atomically
+let banner = CYAN + BOLD + "╔══════════════════════════════════════════╗\n" + "║  sagecom  " + port_path + " @ " + str(baud_rate) + "\n" + "║  Ctrl+A Q=quit C=clear R=reset          ║\n" + "╚══════════════════════════════════════════╝\n" + RESET + "\n"
+out(banner)
 
 # ---- Main loop ----
 let escape_mode = false

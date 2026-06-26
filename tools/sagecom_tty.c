@@ -112,3 +112,23 @@ const char* sagecom_stdin_read(void) {
 int sagecom_serial_write(int fd, const char* data) {
     return (int)write(fd, data, strlen(data));
 }
+
+/* Drain any pending serial input (discard data already in buffer) */
+void sagecom_serial_drain(int fd) {
+    char buf[256];
+    /* Change to full non-blocking temporarily */
+    struct termios tty;
+    if (tcgetattr(fd, &tty) == 0) {
+        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VTIME] = 0;
+        tcsetattr(fd, TCSAFLUSH, &tty);
+    }
+    /* Read and discard */
+    while (read(fd, buf, sizeof(buf)) > 0) {}
+    /* Restore 100ms timeout */
+    if (tcgetattr(fd, &tty) == 0) {
+        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VTIME] = 1;
+        tcsetattr(fd, TCSAFLUSH, &tty);
+    }
+}
