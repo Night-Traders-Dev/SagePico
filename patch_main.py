@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Patch Sage main() — Native bridge + HSTX display driver."""
+"""Patch Sage main() — arch-specific init + native bridge + HSTX display."""
 import re, sys, os
 
 filepath = sys.argv[1]
-arch = sys.argv[2] if len(sys.argv) > 2 else "riscv"
+arch = sys.argv[2] if len(sys.argv) > 2 else "arm"
 
 with open(filepath, 'r') as f:
     data = f.read()
@@ -14,62 +14,42 @@ data = re.sub(r'    SageGcFrame sage_gc_main_frame;\n    sage_gc_push_frame\(&sa
 data = re.sub(r'    sage_gc_pop_frame\(&sage_gc_main_frame\);\n', '', data)
 data = re.sub(r'    sage_gc_shutdown\(\);\n', '', data)
 
-# 2. Includes
+# 2. Includes — shared bridges + arch-specific init
+arch_include = f'#include "init.h"'  # resolves from src/{arch}/
 data = data.replace(
     '#include "pico/stdlib.h"',
-    '#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"'
+    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"\n{arch_include}'
 )
 
-# 3. Strip generated FFI stubs (v3.9.0 dlopen or v3.9.1 one-liner stubs)
-#    Our sage_bridge.h provides full baremetal FFI dispatch
-# Remove old dlopen-based (v3.8.7-v3.9.0)
-data = re.sub(
+# 3. Strip generated FFI stubs (all variants from v3.8.7 to v3.9.2)
+for pattern in [
+    # Old dlopen-based
     r'static SageValue sage_ffi_open\(SageValue libname\) \{\s*'
     r'if \(libname\.type != SAGE_TAG_STRING\) return sage_nil\(\);\s*'
     r'void\* handle = dlopen\(.*?return v;\s*\}\n',
-    '', data, flags=re.DOTALL)
-data = re.sub(
     r'static SageValue sage_ffi_close\(SageValue handle\) \{\s*'
     r'if \(handle\.type != SAGE_TAG_CLIB\) return sage_nil\(\);\s*'
     r'dlclose\(handle\.as\.clib\);\s*return sage_nil\(\);\s*\}\n',
-    '', data, flags=re.DOTALL)
-data = re.sub(
+    # 3-arg stubs
     r'static SageValue sage_ffi_call\(SageValue handle, SageValue name, SageValue args\) \{ return sage_nil\(\); \}\n',
-    '', data)
-data = re.sub(
     r'static SageValue sage_ffi_call_full\(SageValue handle, SageValue name, SageValue args, SageValue rt\) \{ return sage_nil\(\); \}\n',
-    '', data)
-# Remove 4-arg dlopen version (v3.9.0)
-data = re.sub(
+    # 4-arg dlopen version (v3.9.0)
     r'static SageValue sage_ffi_call\(SageValue handle, SageValue name, SageValue ret_type, SageValue args\) \{.*?\n    return sage_nil\(\);\n\}\n',
-    '', data, flags=re.DOTALL)
-data = re.sub(
     r'static SageValue sage_ffi_call_full\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ return sage_ffi_call\(h,n,r,a\); \}\n',
-    '', data)
-# Remove v3.9.1 one-liner stubs (harmless but conflict with our static definitions)
-data = re.sub(
+    # v3.9.1+ one-liner stubs
     r'static SageValue sage_ffi_open\(SageValue libname\) \{ \(void\)libname; return sage_nil\(\); \}\n',
-    '', data)
-data = re.sub(
     r'static SageValue sage_ffi_close\(SageValue handle\) \{ \(void\)handle; return sage_nil\(\); \}\n',
-    '', data)
-data = re.sub(
     r'static SageValue sage_ffi_call\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ \(void\)h; \(void\)n; \(void\)r; \(void\)a; return sage_nil\(\); \}\n',
-    '', data)
-data = re.sub(
     r'static SageValue sage_ffi_call_full\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ \(void\)h; \(void\)n; \(void\)r; \(void\)a; return sage_nil\(\); \}\n',
-    '', data)
+]:
+    data = re.sub(pattern, '', data, flags=re.DOTALL)
 
-# 4. Inject flash_store.h, rvvm.h, gfx_vm.h, sage_bridge.h content
-#    Positioned after all SageValue types are defined
-bridge_path = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'sage_bridge.h')
-flash_path  = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'flash_store.h')
-rvvm_path   = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'rvvm.h')
-gfxvm_path  = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'gfx_vm.h')
-with open(bridge_path, 'r') as bf: bridge_code = bf.read()
-with open(flash_path, 'r') as ff:  flash_code = ff.read()
-with open(rvvm_path, 'r') as rf:   rvvm_code = rf.read()
-with open(gfxvm_path, 'r') as gf:  gfxvm_code = gf.read()
+# 4. Inject flash_store.h, rvvm.h, gfx_vm.h, sage_bridge.h
+base = os.path.dirname(__file__)
+with open(os.path.join(base, 'src', 'pico', 'sage_bridge.h')) as f: bridge_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'flash_store.h')) as f: flash_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'rvvm.h')) as f: rvvm_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'gfx_vm.h')) as f: gfxvm_code = f.read()
 data = data.replace(
     'static SageValue sage_init_native_module(const char* name) {\n'
     '    /* For now, just return an empty dict; real native modules should be linked */\n'
@@ -78,21 +58,18 @@ data = data.replace(
     flash_code + '\n' + rvvm_code + '\n' + gfxvm_code + '\n' + bridge_code + '\n'
 )
 
-# 4. Init with display + pattern
+# 5. Init sequence using arch-specific helpers
 data = data.replace(
     '    stdio_init_all();\n    sleep_ms(2000);',
-    '    /* RISC-V: explicit USB reset before stdio_init */\n'
-    '    #ifdef __riscv\n'
-    '    reset_block(RESETS_RESET_USBCTRL_BITS);\n'
-    '    unreset_block_wait(RESETS_RESET_USBCTRL_BITS);\n'
-    '    #endif\n'
+    '    sage_arch_pre_init();\n'
     '    stdio_init_all();\n'
-    '    gpio_init(7); gpio_set_dir(7, GPIO_OUT);\n'
-    '    printf("\\n=== SagePico (' + arch + ') HSTX ===\\n");\n'
+    '    sage_arch_init();\n'
+    '    sage_arch_post_init();\n'
+    f'    printf("\\n=== SagePico ({arch}) HSTX ===\\n");\n'
     '    display_init();\n'
     '    printf("HSTX init OK\\n");\n'
     '    con_clear();\n'
-    '    con_printf("=== SagePico (' + arch + ') ===\\n");\n'
+    f'    con_printf("=== SagePico ({arch}) ===\\n");\n'
     '    con_printf("Display: 1280x800 DVI via HSTX\\n");\n'
     '    int bw = FB_WIDTH/7;\n'
     '    for (int i=0;i<7;i++) disp_rect(i*bw,20,bw,20,i+1);\n'
@@ -103,7 +80,7 @@ data = data.replace(
     '    sage_repl();'
 )
 
-# 5. Scanline render with hardware TMDS encoder
+# 6. Scanline render loop (post-REPL)
 data = re.sub(
     r'(\n    return 0;\n\}\n)',
     r'\n    int _t=0, _scan=0;\n'

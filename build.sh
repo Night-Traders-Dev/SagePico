@@ -18,23 +18,25 @@ SRC_DIR="${SCRIPT_DIR}/src"
 BUILD_DIR="${SCRIPT_DIR}/build"
 
 # Parse args
-ARCH="${1:-riscv}"  # "riscv" or "arm"
+ARCH="${1:-arm}"  # "arm" or "riscv"
 
 case "$ARCH" in
     riscv|rv|hazard3)
         PLATFORM="rp2350-riscv"
         TOOLCHAIN_PATH="$RISCV_TOOLCHAIN"
         CHIP_NAME="Hazard3 RISC-V"
+        ARCH_DIR="riscv"
         ;;
     arm|cortex|m33)
         PLATFORM="rp2350-arm-s"
         TOOLCHAIN_PATH=""
         CHIP_NAME="Cortex-M33 ARM"
+        ARCH_DIR="arm"
         ;;
     *)
-        echo "Usage: $0 [riscv|arm]"
-        echo "  riscv - Hazard3 RISC-V (default)"
-        echo "  arm   - Cortex-M33 ARM"
+        echo "Usage: $0 [arm|riscv]"
+        echo "  arm   - Cortex-M33 ARM (default)"
+        echo "  riscv - Hazard3 RISC-V"
         exit 1
         ;;
 esac
@@ -86,10 +88,10 @@ pico_sdk_init()
 add_executable(hello "${TMP_DIR}/hello.c" ${STUBS_OPT})
 target_link_libraries(hello pico_stdlib hardware_adc hardware_pwm hardware_i2c hardware_spi hardware_pio hardware_dma)
 target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico")
+target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/${ARCH_DIR}")
 pico_enable_stdio_usb(hello 1)
 pico_enable_stdio_uart(hello 1)
 ${SHIMS_OPT}
-target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico")
 pico_add_extra_outputs(hello)
 CMAKEEOF
 
