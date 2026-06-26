@@ -1,9 +1,9 @@
-/* Stub implementations for baremetal RP2350 (no OS) */
+/* Stub implementations for baremetal (pthread, nanosleep) */
 #define _POSIX_THREADS 1
+#define _POSIX_TIMERS 1
 #include <pthread.h>
 #include <time.h>
 
-/* pthread stubs - return success for mutex ops, fail for thread creation */
 int pthread_mutex_init(pthread_mutex_t* m, const pthread_mutexattr_t* a) {
     (void)a; if (m) *m = 0; return 0;
 }

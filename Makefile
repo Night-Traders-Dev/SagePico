@@ -1,53 +1,47 @@
-# SagePico Build System for Feather RP2350 (Hazard3 RISC-V)
+# SagePico Build System for Feather RP2350
 SAGE := $(CURDIR)/deps/sagelang/sage
 SAGEVM := $(CURDIR)/deps/SageVM/sagevm
-PICO_SDK := $(CURDIR)/deps/pico-sdk
-TOOLCHAIN := $(CURDIR)/deps/pico-sdk-tools/build/riscv-install/bin
 PICOTOOL := $(shell which picotool 2>/dev/null || echo $(HOME)/.local/bin/picotool)
 
-.PHONY: all clean run test sagevm sr compile uf2 flash
+.PHONY: all clean run test sagevm sr uf2 flash flash-arm flash-riscv
 
-all: uf2
+all: uf2-riscv uf2-arm
 
-# Run Sage interpreter (desktop)
+# --- Desktop tests ---
 run:
 	@$(SAGE) src/hello.sage
 
-# Test SageVM bytecode (desktop)
 test: sagevm
 	@$(SAGEVM) run src/hello.sgvm
 
-# Compile to SageVM bytecode
 sagevm:
 	@$(SAGEVM) compile src/hello.sage
-	@echo "SGVM bytecode: src/hello.sgvm"
 
-# Compile to SRVM (RISC-V) bytecode
 sr:
 	@$(SAGEVM) compile --riscv src/hello.sage
-	@echo "SRVM bytecode: src/hello.sgrv"
 
-# Generate Pico C code only
-c:
-	@$(SAGE) --emit-pico-c src/hello.sage -o .tmp/hello/hello.c
-	@echo "C code: .tmp/hello/hello.c"
+# --- UF2 builds ---
+uf2-riscv:
+	@./build.sh riscv
 
-# Full build: C -> CMake -> UF2
-uf2:
-	@./build.sh
+uf2-arm:
+	@./build.sh arm
 
-# Flash UF2 to device (requires picotool with USB support)
-flash: uf2
-	@echo "Attempting to flash via picotool..."
-	@if [ -x "$(PICOTOOL)" ]; then \
-		$(PICOTOOL) load build/hello.uf2 || \
-		(echo "Hold BOOTSEL, tap RESET, then:"; \
-		 echo "  $(PICOTOOL) load build/hello.uf2"); \
-	else \
-		echo "picotool not found. Copy build/hello.uf2 to RPI-RP2 drive."; \
-	fi
+uf2: uf2-riscv uf2-arm
 
-# Clean build artifacts
+# --- Flash ---
+flash-riscv: uf2-riscv
+	@echo "Flashing RISC-V build..."
+	@$(PICOTOOL) load -f build/hello-riscv.uf2 || \
+		(echo "Put board in BOOTSEL mode and run: $(PICOTOOL) load build/hello-riscv.uf2")
+
+flash-arm: uf2-arm
+	@echo "Flashing ARM build..."
+	@$(PICOTOOL) load -f build/hello-arm.uf2 || \
+		(echo "Put board in BOOTSEL mode and run: $(PICOTOOL) load build/hello-arm.uf2")
+
+flash: flash-arm
+
 clean:
 	@rm -rf .tmp build src/hello.sgvm src/hello.sgrv
 	@echo "Cleaned build artifacts"
