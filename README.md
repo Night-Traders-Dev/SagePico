@@ -68,7 +68,7 @@ Desktop-runnable via `sagevm run`. On-device SRVM interpreter planned.
 | **ADC** | `adc_init`, `adc_gpio`, `adc_select`, `adc_read` |
 | **PWM** | `pwm_setup`, `pwm_duty` |
 | **I2C** | `i2c_init`, `i2c_write`, `i2c_read` |
-| **SPI** | `spi_init`, `spi_transfer` |
+| **SPI** | `spi_init`, `spi_xfer` |
 | **PIO** | `pio_claim`, `pio_put`, `pio_get`, `pio_set_pins`, `pio_set_enabled`, `pio_set_clkdiv`, `pio_clear_fifos` |
 | **WS2812** | `ws2812_init(gpio, pio_idx)`, `ws2812_put(pio, sm, r, g, b)` |
 | **Flash** | `flash_save(key, val)`, `flash_load(key)`, `flash_del(key)`, `flash_keys()` |
