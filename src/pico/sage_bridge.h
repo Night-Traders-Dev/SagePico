@@ -372,3 +372,329 @@ static SageValue sage_ffi_call_full(SageValue handle, SageValue name, SageValue 
     (void)rt;
     return sage_ffi_call(handle, name, args);
 }
+
+/* ---- Mini REPL: expression parser + command shell ---- */
+
+static SageValue sage_repl_vars;  /* dict: variable name -> value */
+
+/* Forward decls */
+static SageValue sage_repl_parse_expr(const char* s, int* pos);
+static void sage_repl_init(void) {
+    sage_repl_vars = sage_make_dict();
+}
+
+/* Skip whitespace */
+static void sage_repl_skip_ws(const char* s, int* pos) {
+    while (s[*pos] == ' ' || s[*pos] == '\t' || s[*pos] == '\n' || s[*pos] == '\r')
+        (*pos)++;
+}
+
+/* Parse a number literal */
+static SageValue sage_repl_parse_number(const char* s, int* pos) {
+    int start = *pos;
+    if (s[*pos] == '-') (*pos)++;
+    while (s[*pos] >= '0' && s[*pos] <= '9') (*pos)++;
+    if (s[*pos] == '.') { (*pos)++; while (s[*pos] >= '0' && s[*pos] <= '9') (*pos)++; }
+    if (*pos == start) return sage_nil();
+    char buf[64]; int len = *pos - start;
+    if (len > 63) len = 63;
+    memcpy(buf, s + start, len); buf[len] = 0;
+    return sage_number(atof(buf));
+}
+
+/* Parse a string literal */
+static SageValue sage_repl_parse_string(const char* s, int* pos) {
+    if (s[*pos] != '"') return sage_nil();
+    (*pos)++; int start = *pos;
+    while (s[*pos] && s[*pos] != '"') (*pos)++;
+    int len = *pos - start;
+    char* buf = (char*)malloc(len + 1);
+    memcpy(buf, s + start, len); buf[len] = 0;
+    if (s[*pos] == '"') (*pos)++;
+    SageValue v = sage_string_take(buf);
+    return v;
+}
+
+/* Parse an identifier */
+static int sage_repl_parse_ident(const char* s, int* pos, char* out, int max) {
+    int start = *pos;
+    while ((s[*pos] >= 'a' && s[*pos] <= 'z') ||
+           (s[*pos] >= 'A' && s[*pos] <= 'Z') ||
+           (s[*pos] >= '0' && s[*pos] <= '9') ||
+           s[*pos] == '_')
+        (*pos)++;
+    int len = *pos - start;
+    if (len == 0 || len >= max) return 0;
+    memcpy(out, s + start, len); out[len] = 0;
+    return 1;
+}
+
+/* Parse a primary expression: number, string, identifier, (expr), [expr,...] */
+static SageValue sage_repl_parse_primary(const char* s, int* pos) {
+    sage_repl_skip_ws(s, pos);
+    if (s[*pos] == 0) return sage_nil();
+
+    /* Number */
+    if ((s[*pos] >= '0' && s[*pos] <= '9') || (s[*pos] == '-' && s[*pos+1] >= '0' && s[*pos+1] <= '9'))
+        return sage_repl_parse_number(s, pos);
+
+    /* String */
+    if (s[*pos] == '"')
+        return sage_repl_parse_string(s, pos);
+
+    /* nil / true / false */
+    if (strncmp(s + *pos, "nil", 3) == 0 && !isalnum((unsigned char)s[*pos+3]) && s[*pos+3] != '_')
+        { *pos += 3; return sage_nil(); }
+    if (strncmp(s + *pos, "true", 4) == 0 && !isalnum((unsigned char)s[*pos+4]) && s[*pos+4] != '_')
+        { *pos += 4; return sage_bool(1); }
+    if (strncmp(s + *pos, "false", 5) == 0 && !isalnum((unsigned char)s[*pos+5]) && s[*pos+5] != '_')
+        { *pos += 5; return sage_bool(0); }
+
+    /* Array literal [a, b, c] */
+    if (s[*pos] == '[') {
+        (*pos)++;
+        SageValue arr = sage_array();
+        while (1) {
+            sage_repl_skip_ws(s, pos);
+            if (s[*pos] == ']') { (*pos)++; break; }
+            SageValue elem = sage_repl_parse_expr(s, pos);
+            if (elem.type != SAGE_TAG_NIL || s[*pos] != ',') {
+                sage_array_push_raw(arr.as.array, elem);
+            }
+            sage_repl_skip_ws(s, pos);
+            if (s[*pos] == ',') (*pos)++;
+            else if (s[*pos] == ']') { (*pos)++; break; }
+        }
+        return arr;
+    }
+
+    /* Parenthesized expression */
+    if (s[*pos] == '(') {
+        (*pos)++;
+        SageValue v = sage_repl_parse_expr(s, pos);
+        sage_repl_skip_ws(s, pos);
+        if (s[*pos] == ')') (*pos)++;
+        return v;
+    }
+
+    /* Identifier: variable lookup */
+    char ident[64];
+    int saved = *pos;
+    if (sage_repl_parse_ident(s, pos, ident, sizeof(ident))) {
+        return sage_dict_get(sage_repl_vars.as.dict, ident);
+    }
+    *pos = saved;
+    return sage_nil();
+}
+
+/* Parse binary operator expression (precedence climbing) */
+static SageValue sage_repl_parse_binary(const char* s, int* pos, int min_prec);
+
+static int sage_repl_op_prec(const char* op) {
+    if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0) return 1;
+    if (strcmp(op, "*") == 0 || strcmp(op, "/") == 0 || strcmp(op, "%") == 0) return 2;
+    if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0) return 0;
+    if (strcmp(op, "<") == 0 || strcmp(op, ">") == 0 || strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0) return 0;
+    return -1;
+}
+
+/* Parse a function call or identifier */
+static SageValue sage_repl_parse_call(const char* s, int* pos) {
+    sage_repl_skip_ws(s, pos);
+    int saved = *pos;
+    char ident[64];
+    if (!sage_repl_parse_ident(s, pos, ident, sizeof(ident))) {
+        *pos = saved;
+        return sage_repl_parse_primary(s, pos);
+    }
+
+    sage_repl_skip_ws(s, pos);
+    if (s[*pos] != '(') {
+        /* Variable reference */
+        if (s[*pos] == '=') {
+            /* Assignment: identifier = expr */
+            (*pos)++;
+            SageValue rhs = sage_repl_parse_expr(s, pos);
+            sage_dict_set(sage_repl_vars.as.dict, ident, rhs);
+            return rhs;
+        }
+        /* Just a variable lookup */
+        SageValue v = sage_dict_get(sage_repl_vars.as.dict, ident);
+        if (v.type == SAGE_TAG_NIL) {
+            /* Check built-in FFI: zero-arg call */
+            for (size_t i = 0; i < SAGE_FFI_TABLE_LEN; i++) {
+                if (strcmp(sage_ffi_table[i].name, ident) == 0) {
+                    SageNativeFn fn = (SageNativeFn)sage_ffi_table[i].fn;
+                    return fn(0, NULL);
+                }
+            }
+        }
+        return v;
+    }
+
+    /* Function call: parse arguments */
+    (*pos)++; /* skip '(' */
+    SageValue args_arr = sage_array();
+    while (1) {
+        sage_repl_skip_ws(s, pos);
+        if (s[*pos] == ')') { (*pos)++; break; }
+        SageValue arg = sage_repl_parse_expr(s, pos);
+        sage_array_push_raw(args_arr.as.array, arg);
+        sage_repl_skip_ws(s, pos);
+        if (s[*pos] == ',') (*pos)++;
+        else if (s[*pos] == ')') { (*pos)++; break; }
+    }
+
+    /* Try FFI dispatch first (built-in functions) */
+    for (size_t i = 0; i < SAGE_FFI_TABLE_LEN; i++) {
+        if (strcmp(sage_ffi_table[i].name, ident) == 0) {
+            SageNativeFn fn = (SageNativeFn)sage_ffi_table[i].fn;
+            SageValue cargv[8];
+            int cargc = args_arr.as.array->count;
+            if (cargc > 8) cargc = 8;
+            for (int j = 0; j < cargc; j++)
+                cargv[j] = args_arr.as.array->elements[j];
+            return fn(cargc, cargv);
+        }
+    }
+
+    /* Try as user-defined variable containing a function */
+    SageValue fn_val = sage_dict_get(sage_repl_vars.as.dict, ident);
+    (void)fn_val;
+    return sage_nil();
+}
+
+/* Binary expression parser with precedence climbing */
+static SageValue sage_repl_parse_binary(const char* s, int* pos, int min_prec) {
+    SageValue left = sage_repl_parse_call(s, pos);
+
+    while (1) {
+        sage_repl_skip_ws(s, pos);
+        char op[3] = {0};
+        int saved = *pos;
+        if (s[*pos] == '+' || s[*pos] == '-' || s[*pos] == '*' || s[*pos] == '/' || s[*pos] == '%' ||
+            s[*pos] == '<' || s[*pos] == '>') {
+            op[0] = s[*pos]; (*pos)++;
+            if (s[*pos] == '=') { op[1] = '='; (*pos)++; }
+        } else if (s[*pos] == '!' && s[*pos+1] == '=') {
+            op[0] = '!'; op[1] = '='; *pos += 2;
+        } else if (s[*pos] == '=' && s[*pos+1] == '=') {
+            op[0] = '='; op[1] = '='; *pos += 2;
+        } else {
+            break;
+        }
+
+        int prec = sage_repl_op_prec(op);
+        if (prec < min_prec) {
+            *pos = saved;
+            break;
+        }
+
+        SageValue right = sage_repl_parse_binary(s, pos, prec + 1);
+
+        /* Evaluate */
+        if (left.type == SAGE_TAG_NUMBER && right.type == SAGE_TAG_NUMBER) {
+            double a = left.as.number, b = right.as.number;
+            if      (strcmp(op, "+") == 0) left = sage_number(a + b);
+            else if (strcmp(op, "-") == 0) left = sage_number(a - b);
+            else if (strcmp(op, "*") == 0) left = sage_number(a * b);
+            else if (strcmp(op, "/") == 0) left = sage_number(b != 0 ? a / b : 0);
+            else if (strcmp(op, "%") == 0) left = sage_number(b != 0 ? fmod(a, b) : 0);
+            else if (strcmp(op, "==") == 0) left = sage_bool(a == b);
+            else if (strcmp(op, "!=") == 0) left = sage_bool(a != b);
+            else if (strcmp(op, "<") == 0) left = sage_bool(a < b);
+            else if (strcmp(op, ">") == 0) left = sage_bool(a > b);
+            else if (strcmp(op, "<=") == 0) left = sage_bool(a <= b);
+            else if (strcmp(op, ">=") == 0) left = sage_bool(a >= b);
+            else break;
+        } else if (left.type == SAGE_TAG_STRING && right.type == SAGE_TAG_STRING && strcmp(op, "+") == 0) {
+            size_t l1 = strlen(left.as.string), l2 = strlen(right.as.string);
+            char* r = (char*)malloc(l1 + l2 + 1);
+            memcpy(r, left.as.string, l1); memcpy(r + l1, right.as.string, l2 + 1);
+            left = sage_string_take(r);
+        } else {
+            break;
+        }
+    }
+    return left;
+}
+
+/* Top-level expression entry */
+static SageValue sage_repl_parse_expr(const char* s, int* pos) {
+    sage_repl_skip_ws(s, pos);
+    if (s[*pos] == 0) return sage_nil();
+    return sage_repl_parse_binary(s, pos, 0);
+}
+
+/* Parse and execute a line of input */
+static void sage_repl_eval(const char* cmd) {
+    int pos = 0;
+    sage_repl_skip_ws(cmd, &pos);
+    if (cmd[pos] == 0 || cmd[pos] == '#') return;
+
+    if (strncmp(cmd + pos, "let ", 4) == 0) {
+        pos += 4;
+        sage_repl_skip_ws(cmd, &pos);
+        char ident[64];
+        if (sage_repl_parse_ident(cmd, &pos, ident, sizeof(ident))) {
+            sage_repl_skip_ws(cmd, &pos);
+            if (cmd[pos] == '=') {
+                pos++;
+                SageValue v = sage_repl_parse_expr(cmd, &pos);
+                sage_dict_set(sage_repl_vars.as.dict, ident, v);
+                printf("  %s = ", ident);
+                sage_print_value(v);
+                printf("\n");
+                return;
+            }
+        }
+    }
+
+    /* Try as expression */
+    SageValue result = sage_repl_parse_expr(cmd, &pos);
+    if (result.type != SAGE_TAG_NIL) {
+        sage_print_value(result);
+        printf("\n");
+    }
+}
+
+/* Mini REPL using printf/scanf over USB CDC */
+static void sage_repl(void) {
+    printf("\n=== Sage REPL ===\n");
+    printf("Type expressions: 2+2, gpio_put(7,1), let x=42, x*2\n");
+    printf("Builtins: gpio_init, gpio_set_dir, gpio_put, gpio_get, gpio_pull_up,\n");
+    printf("          gpio_pull_down, gpio_set_function, sleep_ms, sleep_us, time_us\n");
+    printf("Ctrl+C to exit REPL, resume display\n\n");
+
+    sage_repl_init();
+    char line[256];
+    int idx = 0;
+    int repl_active = 1;
+
+    while (repl_active) {
+        printf(">>> ");
+        idx = 0;
+        while (1) {
+            int c = getchar_timeout_us(100000); /* 100ms timeout for LED heartbeat */
+            if (c == PICO_ERROR_TIMEOUT) continue;
+            if (c == '\r' || c == '\n') {
+                if (idx > 0) { line[idx] = 0; printf("\n"); break; }
+            } else if (c == 0x03) { /* Ctrl+C */
+                printf("^C\nREPL exit, resuming display\n");
+                repl_active = 0;
+                break;
+            } else if (c == 0x08 || c == 0x7f) { /* Backspace */
+                if (idx > 0) { idx--; printf("\b \b"); }
+            } else if (idx < 250 && c >= 32 && c < 127) {
+                line[idx++] = (char)c;
+                putchar(c);
+            }
+        }
+        if (!repl_active) break;
+        if (idx == 0) continue;
+        line[idx] = 0;
+
+        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) break;
+        sage_repl_eval(line);
+    }
+}

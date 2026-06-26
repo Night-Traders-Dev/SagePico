@@ -67,7 +67,8 @@ data = data.replace(
     '    int bw = FB_WIDTH/7;\n'
     '    for (int i=0;i<7;i++) disp_rect(i*bw,0,bw,FB_HEIGHT,i+1);\n'
     '    printf("Pattern drawn\\n");\n'
-    '    sleep_ms(1000);'
+    '    printf("Entering REPL...\\n");\n'
+    '    sage_repl();'
 )
 
 # 5. Scanline render with hardware TMDS encoder
