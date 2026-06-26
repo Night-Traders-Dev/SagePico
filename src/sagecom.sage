@@ -99,7 +99,15 @@ let frame = 0
 
 while running:
     # Read from serial (string-based, no pointer args)
-    let data = ffi_str("sagecom_serial_read", [serial_fd])
+    let raw = ffi_str("sagecom_serial_read", [serial_fd])
+    # Strip \r characters (Feather sends \r\n, we want just \n)
+    let data = ""
+    let j = 0
+    while j < len(raw):
+        let c = raw[j]
+        if c != "\r":
+            data = data + c
+        j = j + 1
     if data != "":
         out(data)
 
