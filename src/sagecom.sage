@@ -14,6 +14,7 @@ let baud_rate = 115200
 let serial_fd = -1
 let running = true
 let stdin_is_tty = false
+let should_exit_early = false
 
 # Parse command line
 let i = 0
@@ -37,7 +38,7 @@ while i < len(sys.args()):
                 print "  Ctrl+A Q     Quit"
                 print "  Ctrl+A C     Clear screen"
                 print "  Ctrl+A R     Reset Feather (DTR toggle)"
-                return
+                should_exit_early = true
     i = i + 1
 
 # ============================================================
@@ -369,6 +370,9 @@ proc run():
 # ============================================================
 # Entry point
 # ============================================================
+
+if should_exit_early:
+    let dummy = 0
 
 # Initialize libc
 libc = ffi_open("libc.so.6")
