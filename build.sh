@@ -84,7 +84,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 add_executable(hello "${TMP_DIR}/hello.c" ${STUBS_OPT})
-target_link_libraries(hello pico_stdlib)
+target_link_libraries(hello pico_stdlib hardware_adc hardware_pwm hardware_i2c hardware_spi)
 pico_enable_stdio_usb(hello 1)
 pico_enable_stdio_uart(hello 1)
 ${SHIMS_OPT}
