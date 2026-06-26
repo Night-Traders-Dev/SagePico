@@ -819,12 +819,10 @@ static void sage_repl_eval(const char* cmd) {
 static void sage_repl(void) {
     printf("\n=== Sage REPL ===\n");
     con_printf("\n=== Sage REPL ===\n");
-    printf("Type expressions: 2+2, gpio_put(7,1), let x=42, x*2\n");
-    con_puts("Type expressions: 2+2, gpio_put(7,1), let x=42, x*2\n");
-    printf("Builtins: gpio_init, gpio_set_dir, gpio_put, gpio_get, gpio_pull_up,\n");
-    con_puts("Builtins: gpio_init, gpio_set_dir, gpio_put, gpio_get, gpio_pull_up,\n");
-    printf("          gpio_pull_down, gpio_set_function, sleep_ms, sleep_us, time_us\n");
-    con_puts("          gpio_pull_down, gpio_set_function, sleep_ms, sleep_us, time_us\n");
+    printf("Multi-line: end line with : to continue, blank line to finish\n");
+    con_puts("Multi-line: end line with : to continue, blank line to finish\n");
+    printf("Commands: procs, save <name>, run <name>, load <name>, edit <name>\n");
+    con_puts("Commands: procs, save <name>, run <name>, load <name>, edit <name>\n");
     printf("Ctrl+C to exit REPL, resume display\n\n");
     con_puts("Ctrl+C to exit REPL, resume display\n\n");
 
@@ -852,16 +850,36 @@ static void sage_repl(void) {
     char line[256];
     int idx = 0;
     int repl_active = 1;
+    int in_multiline = 0;
+    static char multiline_buf[2048];
+    int ml_len = 0;
 
     while (repl_active) {
-        printf(">>> ");
-        con_puts(">>> ");
+        if (in_multiline) {
+            printf("... ");
+            con_puts("... ");
+        } else {
+            printf(">>> ");
+            con_puts(">>> ");
+        }
         idx = 0;
         while (1) {
-            int c = getchar_timeout_us(100000); /* 100ms timeout for LED heartbeat */
+            int c = getchar_timeout_us(100000);
             if (c == PICO_ERROR_TIMEOUT) continue;
             if (c == '\r' || c == '\n') {
-                if (idx > 0) { line[idx] = 0; printf("\n"); con_putchar_raw('\n'); break; }
+                if (idx > 0 || !in_multiline) {
+                    line[idx] = 0;
+                    printf("\n");
+                    con_putchar_raw('\n');
+                    break;
+                }
+                /* Empty line in multiline mode = finish */
+                if (in_multiline && ml_len > 0) {
+                    printf("\n");
+                    con_putchar_raw('\n');
+                    line[0] = 0; idx = 0;
+                    break;
+                }
             } else if (c == 0x03) { /* Ctrl+C */
                 printf("^C\nREPL exit, saving vars...\n");
                 con_puts("^C\nREPL exit, saving vars...\n");
@@ -870,7 +888,7 @@ static void sage_repl(void) {
                 con_puts("Resuming display\n");
                 repl_active = 0;
                 break;
-            } else if (c == 0x08 || c == 0x7f) { /* Backspace */
+            } else if (c == 0x08 || c == 0x7f) {
                 if (idx > 0) { idx--; printf("\b \b"); }
             } else if (idx < 250 && c >= 32 && c < 127) {
                 line[idx++] = (char)c;
@@ -879,16 +897,149 @@ static void sage_repl(void) {
             }
         }
         if (!repl_active) break;
-        if (idx == 0) continue;
-        line[idx] = 0;
 
-        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
-            printf("Saving vars to flash...\n");
-            con_puts("Saving vars to flash...\n");
-            flash_persist_repl_vars();
-            break;
+        if (!in_multiline && idx == 0) continue;
+
+        /* Check for commands */
+        if (!in_multiline) {
+            if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
+                printf("Saving vars to flash...\n");
+                con_puts("Saving vars to flash...\n");
+                flash_persist_repl_vars();
+                break;
+            }
+            if (strcmp(line, "procs") == 0) {
+                char keys[64][64]; int n = 0;
+                flash_store_keys(keys, &n);
+                printf("Stored programs (%d):\n", n);
+                con_printf("Stored programs (%d):\n", n);
+                for (int i = 0; i < n; i++) {
+                    printf("  %s\n", keys[i]);
+                    con_printf("  %s\n", keys[i]);
+                }
+                continue;
+            }
+            if (strncmp(line, "save ", 5) == 0) {
+                char* name = line + 5;
+                while (*name == ' ') name++;
+                if (ml_len > 0 && name[0]) {
+                    flash_store_put(name, (const uint8_t*)multiline_buf, (uint16_t)ml_len);
+                    printf("Saved '%s' (%d chars)\n", name, ml_len);
+                    con_printf("Saved '%s' (%d chars)\n", name, ml_len);
+                    ml_len = 0;
+                    multiline_buf[0] = 0;
+                } else {
+                    printf("Nothing to save. Type multi-line input first.\n");
+                    con_puts("Nothing to save. Type multi-line input first.\n");
+                }
+                continue;
+            }
+            if (strncmp(line, "run ", 4) == 0) {
+                char* name = line + 4;
+                while (*name == ' ') name++;
+                uint8_t buf[2048]; uint16_t len = 0;
+                if (flash_store_get(name, buf, &len) == 0 && len > 0) {
+                    buf[len] = 0;
+                    printf("Running '%s':\n", name);
+                    con_printf("Running '%s':\n", name);
+                    /* Execute each line */
+                    char* l = (char*)buf;
+                    while (*l) {
+                        char* end = l;
+                        while (*end && *end != '\n') end++;
+                        char saved = *end;
+                        *end = 0;
+                        sage_repl_eval(l);
+                        *end = saved;
+                        l = (*end) ? end + 1 : end;
+                    }
+                } else {
+                    printf("No program '%s'\n", name);
+                    con_printf("No program '%s'\n", name);
+                }
+                continue;
+            }
+            if (strncmp(line, "load ", 5) == 0) {
+                char* name = line + 5;
+                while (*name == ' ') name++;
+                uint8_t buf[2048]; uint16_t len = 0;
+                if (flash_store_get(name, buf, &len) == 0 && len > 0 && len < 2048) {
+                    memcpy(multiline_buf, buf, len);
+                    multiline_buf[len] = 0;
+                    ml_len = len;
+                    printf("Loaded '%s' (%d chars)\n", name, ml_len);
+                    con_printf("Loaded '%s' (%d chars)\n", name, ml_len);
+                    printf("%s", multiline_buf);
+                    con_puts(multiline_buf);
+                } else {
+                    printf("No program '%s'\n", name);
+                    con_printf("No program '%s'\n", name);
+                }
+                continue;
+            }
+            if (strncmp(line, "edit ", 5) == 0) {
+                char* name = line + 5;
+                while (*name == ' ') name++;
+                uint8_t buf[2048]; uint16_t len = 0;
+                if (flash_store_get(name, buf, &len) == 0 && len > 0 && len < 2048) {
+                    memcpy(multiline_buf, buf, len);
+                    multiline_buf[len] = 0;
+                    ml_len = len;
+                    printf("Editing '%s'. Type to append, blank line to finish:\n", name);
+                    con_printf("Editing '%s'. Type to append, blank line to finish:\n", name);
+                    printf("%s", multiline_buf);
+                    con_puts(multiline_buf);
+                    in_multiline = 1;
+                } else {
+                    printf("No program '%s'\n", name);
+                    con_printf("No program '%s'\n", name);
+                }
+                continue;
+            }
         }
-        sage_repl_eval(line);
+
+        /* Multi-line mode: accumulate lines */
+        if (in_multiline) {
+            /* Empty line ends multi-line input */
+            if (idx == 0 || line[0] == 0) {
+                in_multiline = 0;
+                printf("(multi-line input complete, %d chars. Use 'save <name>' to store)\n", ml_len);
+                con_printf("(multi-line input complete, %d chars. Use 'save <name>' to store)\n", ml_len);
+                continue;
+            }
+            /* Check if line ends with ':' → continue multi-line */
+            int last_char = idx > 0 ? line[idx-1] : 0;
+            /* Append to buffer */
+            if (ml_len + idx + 2 < 2048) {
+                if (ml_len > 0) { multiline_buf[ml_len++] = '\n'; }
+                memcpy(multiline_buf + ml_len, line, idx);
+                ml_len += idx;
+                multiline_buf[ml_len] = 0;
+            }
+            /* If line ends with ':' and isn't a label, continue */
+            if (last_char == ':') {
+                continue; /* stay in multiline mode */
+            }
+            /* Non-colon line: could be last line or could continue */
+            /* Check if next char would be indented (heuristic) */
+            continue; /* keep accumulating until blank line */
+        } else {
+            /* Single-line mode: check if line ends with colon */
+            line[idx] = 0;
+            int last_char = idx > 0 ? line[idx-1] : 0;
+            if (last_char == ':' && idx > 0) {
+                /* Enter multi-line mode */
+                in_multiline = 1;
+                ml_len = 0;
+                memcpy(multiline_buf, line, idx);
+                ml_len = idx;
+                multiline_buf[ml_len] = 0;
+                /* Don't eval — wait for full block */
+                continue;
+            }
+            /* Single line: eval immediately */
+            sage_repl_eval(line);
+        }
     }
 }
 
