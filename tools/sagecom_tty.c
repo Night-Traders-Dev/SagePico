@@ -51,8 +51,9 @@ int sagecom_open_serial(const char* path, int baud) {
     struct termios tty;
     if (tcgetattr(fd, &tty) < 0) { close(fd); return -1; }
 
-    /* Input flags: no processing */
-    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    /* Input flags: translate CR→NL, no other processing */
+    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | IXON);
+    tty.c_iflag |= ICRNL;  /* translate \r → \n */
     /* Output flags: raw */
     tty.c_oflag &= ~OPOST;
     /* Local flags: no echo, no canonical, no signals */
