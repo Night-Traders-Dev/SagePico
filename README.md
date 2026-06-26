@@ -1,6 +1,6 @@
 # SagePico: SageLang for RP2350
 
-Build bootable UF2 firmware from Sage source code targeting the Feather RP2350 (Cortex-M33 ARM core).
+Build bootable UF2 firmware from Sage source code targeting the Feather RP2350 (Cortex-M33 ARM / Hazard3 RISC-V).
 
 ## Quick Start
 
@@ -8,7 +8,10 @@ Build bootable UF2 firmware from Sage source code targeting the Feather RP2350 (
 # Build for ARM (recommended)
 ./build.sh arm
 
-# Flash automatically  
+# Build for RISC-V
+./build.sh riscv
+
+# Flash automatically
 make flash-arm
 
 # Read serial output
@@ -17,10 +20,13 @@ cat /dev/ttyACM0
 
 Output:
 ```
-=== SagePico (arm) ===
-Hello from Sage on RP2350!
-SagePico uptime 2s
-SagePico uptime 3s
+=== SagePico (arm) HSTX ===
+HSTX init OK
+Pattern drawn
+SagePico: Hello from Sage on RP2350!
+Native pico bridge loaded
+Frame 0
+Frame 1
 ...
 ```
 
@@ -29,28 +35,64 @@ SagePico uptime 3s
 ### Path 1: Baremetal (Sage -> C -> UF2) ✓ Production
 
 ```
-src/hello.sage  →  sage --emit-pico-c  →  hello.c  →  patching  →  CMake + Pico SDK + arm-none-eabi-gcc  →  build/hello-arm.uf2
+src/hello.sage  →  sage --emit-pico-c  →  hello.c  →  patching  →  CMake + Pico SDK  →  build/hello-{arch}.uf2
 ```
 
 The Sage compiler generates a C file with the full Sage runtime. The build pipeline:
 1. Patches includes for baremetal (`dlfcn.h`, `semaphore.h`, `pthread.h` → shims)
 2. Replaces `fputs`/`fputc` with `printf` (newlib fd layer crashes baremetal)
 3. Replaces `sage_print_ln(sage_string("..."))` with `printf("...\n")`
-4. Removes Sage GC/runtime calls (not needed for simple programs)
-5. Adds `pico_port.h` bridge for GPIO/UART/etc.
-6. Adds LED heartbeat on GPIO 7
+4. Injects `sage_bridge.h` — SageValue-wrapped pico_port functions + baremetal FFI
+5. Adds `pico_port.h` and `hstx_display.h` for GPIO/display
+6. Configures HSTX DVI display output + scanline render loop
 
 ### Path 2: SageVM SRVM (Sage -> Bytecode) ✓ Working
 
 ```
-src/hello.sage  →  sagevm compile --riscv  →  src/hello.sgrv (61 bytes)
+src/hello.sage  →  sagevm compile --riscv  →  src/hello.sgrv (compact RISC-V bytecode)
 ```
 
-Compact RISC-V bytecode. Desktop-runnable via `sagevm run`. Embedding SRVM interpreter on-device is planned.
+Desktop-runnable via `sagevm run`. Embedding SRVM interpreter on-device is planned.
 
-## pico_port.h Bridge
+## Native Bridge & FFI
 
-`src/pico/pico_port.h` provides a zero-overhead Sage-to-Pico SDK bridge — lightweight `static inline` C wrappers:
+### `sage_bridge.h` — SageValue Native Bridge
+
+`src/pico/sage_bridge.h` wraps all 7 pico_port peripherals as SageValue-native C functions:
+
+| Module | Functions |
+|--------|-----------|
+| GPIO | `gpio_init`, `gpio_set_dir`, `gpio_put`, `gpio_get`, `gpio_pull_up/down`, `gpio_set_function` |
+| Time | `sleep_ms`, `sleep_us`, `time_us`, `time_ms` |
+| UART | `init`, `putc`, `puts`, `getc`, `readable` |
+| ADC | `init`, `gpio_init`, `select`, `read` |
+| PWM | `setup`, `duty` |
+| I2C | `init`, `write`, `read` |
+| SPI | `init`, `transfer` |
+
+### FFI Dispatch System
+
+The bridge implements `ffi_open` and `ffi_call` for baremetal, replacing the `dlopen`-based stubs. Sage code uses the standard FFI pattern:
+
+```sage
+let pico = ffi_open("pico")
+ffi_call(pico, "gpio_init", [7])
+ffi_call(pico, "gpio_set_dir", [7, 1])
+ffi_call(pico, "gpio_put", [7, 1])
+ffi_call(pico, "sleep_ms", [250])
+ffi_call(pico, "gpio_put", [7, 0])
+```
+
+The bridge also populates `sage_init_native_module()` so Sage `import` statements resolve:
+```sage
+import pico          # Returns dict with all GPIO functions
+import time          # Returns dict with sleep_ms, sleep_us, time_us, time_ms
+import uart          # Returns dict with UART functions
+```
+
+### `pico_port.h` — Direct C Bridge
+
+`src/pico/pico_port.h` provides zero-overhead `static inline` C wrappers for direct C usage (no SageValue overhead):
 
 | Module | Functions |
 |--------|-----------|
@@ -63,30 +105,45 @@ Compact RISC-V bytecode. Desktop-runnable via `sagevm run`. Embedding SRVM inter
 | I2C | `sage_i2c_init`, `sage_i2c_write`, `sage_i2c_read` |
 | SPI | `sage_spi_init`, `sage_spi_xfer` |
 
+## HSTX DVI Display
+
+`src/pico/hstx_display.h` drives a DVI/HDMI display via the RP2350's hardware TMDS encoder on the HSTX peripheral:
+
+- 640x400 internal framebuffer, 2x scaled to 1280x800 output
+- 256-color palette (8bpp indexed)
+- Hardware TMDS command expander with proper opcode encoding (`0x2 << 12`)
+- Differential output on GPIO 12-19 (8 pins, 3 data lanes + clock)
+- GT911 touch controller on I2C0 (GPIO 22/23)
+- Scanline render loop pushing 2 pixels per FIFO word at 252 MHz system clock
+
 ## Project Structure
 
 ```
 src/
-  hello.sage            # Sage source program
-  blink.sage            # GPIO blink demo (WIP)
+  hello.sage             # Sage program entry (FFI-based)
+  blink.sage             # GPIO blink demo using FFI
   pico/
-    pico_port.h         # C bridge: GPIO, UART, Time, Print, ADC, PWM, I2C, SPI
-    gpio.sage           # Sage GPIO module stubs
-    gpio_wrap.c         # C GPIO wrapper
-shims/                  # Baremetal compatibility
+    pico_port.h          # Direct C bridge: GPIO, UART, Time, Print, ADC, PWM, I2C, SPI
+    sage_bridge.h         # SageValue native bridge + FFI dispatch + module init
+    hstx_display.h        # HSTX DVI display driver (TMDS encoder, framebuffer, touch)
+    gpio.sage             # Sage GPIO module (importable)
+    gpio_wrap.c           # GPIO SageValue wrapper (standalone, not linked in build)
+    elf2uf2.sage          # Pure-Sage ELF-to-UF2 converter (desktop)
+shims/                   # Baremetal compatibility
   dlfcn.h, semaphore.h, stdatomic.h   # Missing POSIX headers
-  pthread.h             # Minimal pthread declarations
-  stubs.c               # pthread/nanosleep link stubs
-patch_stdio.py          # Replaces fputs/fputc with printf
-patch_main.py           # Replaces Sage runtime calls, adds LED, pico_port
-build.sh                # Full build pipeline
-build/                  # Output UF2 files
-  hello-arm.uf2         # ARM Cortex-M33 image (~50KB)
-  hello-riscv.uf2       # Hazard3 RISC-V image (~65KB)
-docs/                   # Architecture and board docs
-deps/                   # Git submodules
-  sagelang/             # SageLang compiler v3.8.7
-  SageVM/               # SageVM v0.9.8 with SRVM backend
+  pthread.h              # Minimal pthread declarations (avoids newlib TLS init)
+  stubs.c                # pthread/nanosleep link stubs
+  baremetal_stubs.h      # Comprehensive unified stub
+patch_stdio.py           # Replaces fputs/fputc with printf
+patch_main.py            # Injects sage_bridge.h, pico_port.h, hstx_display, render loop
+build.sh                 # Full 2-path build pipeline (ARM + RISC-V)
+build/                   # Output UF2 files
+  hello-arm.uf2          # ARM Cortex-M33 image (~86KB)
+  hello-riscv.uf2        # Hazard3 RISC-V image (~109KB)
+docs/                    # Architecture and board docs
+deps/                    # Git submodules
+  sagelang/              # SageLang compiler v3.8.7
+  SageVM/                # SageVM v0.9.8 with SRVM backend
   pico-sdk/              # Raspberry Pi Pico SDK (RP2350 support)
   pico-sdk-tools/        # RISC-V toolchain + picotool 2.2.0
 ```
@@ -113,15 +170,14 @@ sudo usermod -a -G dialout $USER   # then log out/in
 
 | Arch | Core | Status | Notes |
 |------|------|--------|-------|
-| ARM | Cortex-M33 | ✓ Working | USB CDC, printf, GPIO, LED |
-| RISC-V | Hazard3 | ⚠ Compiles | UF2 builds, USB CDC silent |
+| ARM | Cortex-M33 | Working | USB CDC, printf, GPIO, HSTX DVI display |
+| RISC-V | Hazard3 | Compiles | UF2 builds, USB CDC silent (interrupt difference) |
 
 ## Known Issues
 
 - **fputs/fputc crash**: newlib's file descriptor layer segfaults on baremetal. Workaround: all patched to `printf`.
-- **Sage GC runtime**: linking it pulls in `exit`/`_sbrk` which corrupt baremetal startup. Workaround: bypassed for simple programs.
 - **RISC-V USB CDC**: program runs but no serial output. Likely interrupt handling difference in Hazard3 vs Cortex-M33 NVIC.
-- **RISC-V toolchain**: bundled `riscv32-unknown-elf-gcc 15.2.0` in `deps/pico-sdk-tools/build/riscv-install/`.
+- **RISC-V toolchain**: bundled `riscv32-unknown-elf-gcc` in `deps/pico-sdk-tools/build/riscv-install/`.
 
 ## Dependencies
 

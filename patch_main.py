@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Patch Sage main() — HSTX with hardware TMDS encoder."""
-import re, sys
+"""Patch Sage main() — Native bridge + HSTX display driver."""
+import re, sys, os
 
 filepath = sys.argv[1]
 arch = sys.argv[2] if len(sys.argv) > 2 else "riscv"
@@ -20,7 +20,43 @@ data = data.replace(
     '#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"'
 )
 
-# 3. Init with display + pattern
+# 3. Strip old FFI stubs (they use dlopen/dlsym which doesn't work on baremetal)
+data = re.sub(
+    r'static SageValue sage_ffi_open\(SageValue libname\) \{\s*'
+    r'if \(libname\.type != SAGE_TAG_STRING\) return sage_nil\(\);\s*'
+    r'void\* handle = dlopen\(libname\.as\.string, RTLD_NOW\);\s*'
+    r'if \(!handle\) return sage_nil\(\);\s*'
+    r'SageValue v; v\.type = SAGE_TAG_CLIB; v\.as\.clib = handle; return v;\s*'
+    r'\}\n',
+    '', data, flags=re.DOTALL)
+data = re.sub(
+    r'static SageValue sage_ffi_close\(SageValue handle\) \{\s*'
+    r'if \(handle\.type != SAGE_TAG_CLIB\) return sage_nil\(\);\s*'
+    r'dlclose\(handle\.as\.clib\);\s*'
+    r'return sage_nil\(\);\s*'
+    r'\}\n',
+    '', data, flags=re.DOTALL)
+data = re.sub(
+    r'static SageValue sage_ffi_call\(SageValue handle, SageValue name, SageValue args\) \{ return sage_nil\(\); \}\n',
+    '', data)
+data = re.sub(
+    r'static SageValue sage_ffi_call_full\(SageValue handle, SageValue name, SageValue args, SageValue rt\) \{ return sage_nil\(\); \}\n',
+    '', data)
+
+# 4. Inject sage_bridge.h content (replaces sage_init_native_module + FFI stubs)
+#    Positioned after all SageValue types are defined (~line 774)
+bridge_path = os.path.join(os.path.dirname(__file__), 'src', 'pico', 'sage_bridge.h')
+with open(bridge_path, 'r') as bf:
+    bridge_code = bf.read()
+data = data.replace(
+    'static SageValue sage_init_native_module(const char* name) {\n'
+    '    /* For now, just return an empty dict; real native modules should be linked */\n'
+    '    return sage_make_dict();\n'
+    '}\n',
+    bridge_code + '\n'
+)
+
+# 4. Init with display + pattern
 data = data.replace(
     '    stdio_init_all();\n    sleep_ms(2000);',
     '    stdio_init_all();\n'
@@ -34,7 +70,7 @@ data = data.replace(
     '    sleep_ms(1000);'
 )
 
-# 4. Scanline render with hardware TMDS encoder
+# 5. Scanline render with hardware TMDS encoder
 data = re.sub(
     r'(\n    return 0;\n\}\n)',
     r'\n    int _t=0, _scan=0;\n'

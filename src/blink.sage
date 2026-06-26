@@ -1,25 +1,19 @@
-# SagePico Blink Demo
-# Demonstrates GPIO control via pico_port bridge
-# LED on GPIO 7, prints uptime to USB serial
+# Blink demo for SagePico — pure Sage using FFI to pico_port
+# Compile: sage --emit-pico-c src/blink.sage -o .tmp/blink-riscv/blink.c
+# Then patch + build as usual
 
-# init hardware (mapped to pico_port by build system)
-proc init_hw():
-    return nil
+let pico = ffi_open("pico")
 
-# blink the LED n times
-proc blink(pin, count, on_ms, off_ms):
-    return nil
+# Blink the LED on GPIO 7 (Feather RP2350 built-in LED)
+ffi_call(pico, "gpio_init", [7])
+ffi_call(pico, "gpio_set_dir", [7, 1])  # 1 = OUTPUT
 
-# main program
-init_hw()
-print "SagePico Blink Demo - starting"
-
-let led = 7
 let count = 0
-
-while count < 5:
-    blink(led, 1, 200, 200)
-    print "Blink " + str(count + 1)
+while count < 10:
+    ffi_call(pico, "gpio_put", [7, 1])   # LED on
+    ffi_call(pico, "sleep_ms", [250])
+    ffi_call(pico, "gpio_put", [7, 0])   # LED off
+    ffi_call(pico, "sleep_ms", [250])
     count = count + 1
 
-print "Demo complete"
+print "Blink complete"
