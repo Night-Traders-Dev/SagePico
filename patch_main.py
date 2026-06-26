@@ -20,21 +20,18 @@ data = data.replace(
     '#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"'
 )
 
-# 3. Strip old FFI stubs + new Sage v3.9.0 generated FFI (we provide baremetal versions)
+# 3. Strip generated FFI stubs (v3.9.0 dlopen or v3.9.1 one-liner stubs)
+#    Our sage_bridge.h provides full baremetal FFI dispatch
+# Remove old dlopen-based (v3.8.7-v3.9.0)
 data = re.sub(
     r'static SageValue sage_ffi_open\(SageValue libname\) \{\s*'
     r'if \(libname\.type != SAGE_TAG_STRING\) return sage_nil\(\);\s*'
-    r'void\* handle = dlopen\(libname\.as\.string, RTLD_NOW\);\s*'
-    r'if \(!handle\) return sage_nil\(\);\s*'
-    r'SageValue v; v\.type = SAGE_TAG_CLIB; v\.as\.clib = handle; return v;\s*'
-    r'\}\n',
+    r'void\* handle = dlopen\(.*?return v;\s*\}\n',
     '', data, flags=re.DOTALL)
 data = re.sub(
     r'static SageValue sage_ffi_close\(SageValue handle\) \{\s*'
     r'if \(handle\.type != SAGE_TAG_CLIB\) return sage_nil\(\);\s*'
-    r'dlclose\(handle\.as\.clib\);\s*'
-    r'return sage_nil\(\);\s*'
-    r'\}\n',
+    r'dlclose\(handle\.as\.clib\);\s*return sage_nil\(\);\s*\}\n',
     '', data, flags=re.DOTALL)
 data = re.sub(
     r'static SageValue sage_ffi_call\(SageValue handle, SageValue name, SageValue args\) \{ return sage_nil\(\); \}\n',
@@ -42,12 +39,25 @@ data = re.sub(
 data = re.sub(
     r'static SageValue sage_ffi_call_full\(SageValue handle, SageValue name, SageValue args, SageValue rt\) \{ return sage_nil\(\); \}\n',
     '', data)
-# Strip Sage v3.9.0 generated ffi_call/ffi_call_full (4-arg version with dlsym)
+# Remove 4-arg dlopen version (v3.9.0)
 data = re.sub(
     r'static SageValue sage_ffi_call\(SageValue handle, SageValue name, SageValue ret_type, SageValue args\) \{.*?\n    return sage_nil\(\);\n\}\n',
     '', data, flags=re.DOTALL)
 data = re.sub(
     r'static SageValue sage_ffi_call_full\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ return sage_ffi_call\(h,n,r,a\); \}\n',
+    '', data)
+# Remove v3.9.1 one-liner stubs (harmless but conflict with our static definitions)
+data = re.sub(
+    r'static SageValue sage_ffi_open\(SageValue libname\) \{ \(void\)libname; return sage_nil\(\); \}\n',
+    '', data)
+data = re.sub(
+    r'static SageValue sage_ffi_close\(SageValue handle\) \{ \(void\)handle; return sage_nil\(\); \}\n',
+    '', data)
+data = re.sub(
+    r'static SageValue sage_ffi_call\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ \(void\)h; \(void\)n; \(void\)r; \(void\)a; return sage_nil\(\); \}\n',
+    '', data)
+data = re.sub(
+    r'static SageValue sage_ffi_call_full\(SageValue h, SageValue n, SageValue r, SageValue a\) \{ \(void\)h; \(void\)n; \(void\)r; \(void\)a; return sage_nil\(\); \}\n',
     '', data)
 
 # 4. Inject flash_store.h, rvvm.h, gfx_vm.h, sage_bridge.h content
