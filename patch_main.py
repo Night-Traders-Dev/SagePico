@@ -80,38 +80,39 @@ data = data.replace(
     '    sage_repl();'
 )
 
-# 6. Scanline render loop (post-REPL)
-data = re.sub(
-    r'(\n    return 0;\n\}\n)',
-    r'\n    int _t=0, _scan=0;\n'
-    r'    while (1) {\n'
-    r'        gpio_put(7,1);\n'
-    r'        int v_active=(_scan>=OUT_V_SYNC+OUT_V_BP && _scan<OUT_V_SYNC+OUT_V_BP+OUT_HEIGHT);\n'
-    r'        int v_sync=(_scan<OUT_V_SYNC);\n'
-    r'        int fy=v_active?(_scan-OUT_V_SYNC-OUT_V_BP)/2:0;\n'
-    r'        if(fy>=FB_HEIGHT)fy=FB_HEIGHT-1;\n'
-    r'        for(int hx=0;hx<OUT_H_TOTAL;hx+=2){\n'
-    r'            int h_active=(hx>=OUT_H_SYNC+OUT_H_BP && hx<OUT_H_SYNC+OUT_H_BP+OUT_WIDTH);\n'
-    r'            int h_sync=(hx<OUT_H_SYNC);\n'
-    r'            if(v_active&&h_active){\n'
-    r'                int fx0=(hx-OUT_H_SYNC-OUT_H_BP)/2,fx1=fx0+1;\n'
-    r'                if(fx0<0)fx0=0;if(fx1>=FB_WIDTH)fx1=FB_WIDTH-1;\n'
-    r'                uint16_t c0=disp_palette[disp_fb[fy*FB_WIDTH+fx0]];\n'
-    r'                uint16_t c1=disp_palette[disp_fb[fy*FB_WIDTH+fx1]];\n'
-    r'                hx_push_tmds((c0>>8)&0xf8,(c0>>3)&0xfc,(c0<<3)&0xf8);\n'
-    r'                hx_push_tmds((c1>>8)&0xf8,(c1>>3)&0xfc,(c1<<3)&0xf8);\n'
-    r'            }else{\n'
-    r'                uint8_t ctl=(h_sync?2:0)|(v_sync?1:0);\n'
-    r'                hx_push_tmds(ctl,ctl,ctl);\n'
-    r'                hx_push_tmds(ctl,ctl,ctl);\n'
-    r'            }\n'
-    r'        }\n'
-    r'        _scan++;if(_scan>=OUT_V_TOTAL)_scan=0;\n'
-    r'        gpio_put(7,0);\n'
-    r'        if(_t%60==0)printf("Frame %d\\n",_t/60);\n'
-    r'        _t++;\n'
-    r'    }\n    return 0;\n}\n',
-    data)
+# 6. Scanline render loop — inject after sage_repl(), before Sage program code
+data = data.replace(
+    '    sage_repl();',
+    '    sage_repl();\n'
+    '    int _t=0, _scan=0;\n'
+    '    while (1) {\n'
+    '        gpio_put(7,1);\n'
+    '        int v_active=(_scan>=OUT_V_SYNC+OUT_V_BP && _scan<OUT_V_SYNC+OUT_V_BP+OUT_HEIGHT);\n'
+    '        int v_sync=(_scan<OUT_V_SYNC);\n'
+    '        int fy=v_active?(_scan-OUT_V_SYNC-OUT_V_BP)/2:0;\n'
+    '        if(fy>=FB_HEIGHT)fy=FB_HEIGHT-1;\n'
+    '        for(int hx=0;hx<OUT_H_TOTAL;hx+=2){\n'
+    '            int h_active=(hx>=OUT_H_SYNC+OUT_H_BP && hx<OUT_H_SYNC+OUT_H_BP+OUT_WIDTH);\n'
+    '            int h_sync=(hx<OUT_H_SYNC);\n'
+    '            if(v_active&&h_active){\n'
+    '                int fx0=(hx-OUT_H_SYNC-OUT_H_BP)/2,fx1=fx0+1;\n'
+    '                if(fx0<0)fx0=0;if(fx1>=FB_WIDTH)fx1=FB_WIDTH-1;\n'
+    '                uint16_t c0=disp_palette[disp_fb[fy*FB_WIDTH+fx0]];\n'
+    '                uint16_t c1=disp_palette[disp_fb[fy*FB_WIDTH+fx1]];\n'
+    '                hx_push_tmds((c0>>8)&0xf8,(c0>>3)&0xfc,(c0<<3)&0xf8);\n'
+    '                hx_push_tmds((c1>>8)&0xf8,(c1>>3)&0xfc,(c1<<3)&0xf8);\n'
+    '            }else{\n'
+    '                uint8_t ctl=(h_sync?2:0)|(v_sync?1:0);\n'
+    '                hx_push_tmds(ctl,ctl,ctl);\n'
+    '                hx_push_tmds(ctl,ctl,ctl);\n'
+    '            }\n'
+    '        }\n'
+    '        _scan++;if(_scan>=OUT_V_TOTAL)_scan=0;\n'
+    '        gpio_put(7,0);\n'
+    '        if(_t%60==0)printf("Frame %d\\n",_t/60);\n'
+    '        _t++;\n'
+    '    }\n'
+)
 
 with open(filepath, 'w') as f:
     f.write(data)
