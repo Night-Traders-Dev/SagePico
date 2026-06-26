@@ -80,9 +80,9 @@ int sagecom_open_serial(const char* path, int baud) {
     saved_serial_termios = tty;
     saved_serial_valid = 1;
 
-    /* Non-blocking reads */
+    /* Read with 100ms timeout: VMIN=0, VTIME=1 (1 decisecond) */
     tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 0;
+    tty.c_cc[VTIME] = 1;
 
     if (tcsetattr(fd, TCSAFLUSH, &tty) < 0) { close(fd); return -1; }
     return fd;
