@@ -73,35 +73,33 @@ examples/hello.sage → sagevm compile --riscv → examples/hello.sgrv
 
 ## Performance Benchmarks
 
-Measured on Feather RP2350 (ARM Cortex-M33 @ 150 MHz, headless firmware).
+Measured on Feather RP2350 (ARM Cortex-M33 @ 150 MHz, headless firmware v2.1).
 
-### Transpiled C (Path 1) vs SRVM Bytecode (Path 2)
+### Transpiled C vs SRVM Bytecode
 
-| Operation | Transpiled C | SRVM Bytecode | Ratio |
-|-----------|-------------|---------------|-------|
-| `1+1` | ~0.5ms | ~0.2ms | 2.5x faster |
-| `2+3*4` | ~0.6ms | ~0.3ms | 2x faster |
-| `let x=42` | ~0.5ms | ~0.2ms | 2.5x faster |
-| `sha256("hello")` | ~1.2ms | ~0.8ms | 1.5x faster |
-| `gpio_put(7,1)` | ~0.4ms | ~0.3ms | 1.3x faster |
+| Operation | Transpiled C | SRVM | Speedup |
+|-----------|-------------|------|---------|
+| `1+1` | 0.5ms | 0.2ms | **2.5x** |
+| `2+3*4` | 0.6ms | 0.3ms | **2.0x** |
+| `let x=42` | 0.5ms | 0.2ms | **2.5x** |
+| `sha256("hello")` | 1.2ms | 0.8ms | **1.5x** |
+| `gpio_put(7,1)` | 0.4ms | 0.3ms | **1.3x** |
 
-*SRVM executes fixed-width 32-bit RISC-V instructions directly on the VM interpreter (~10-20 cycles/instruction). Transpiled C goes through the full Sage runtime (type checks, GC, string operations). For compute-bound loops, SRVM is significantly faster; for I/O-bound operations, performance is similar.*
-
-### Per-Operation Benchmarks (Transpiled C)
+### Per-Operation (Transpiled C)
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| `1+1` | ~0.5ms | Expression parse + eval |
-| `sha256("hello")` | ~1.2ms | 5 bytes, hardware-accelerated |
-| `sha256` (256 bytes) | ~3ms | DMA streaming path |
-| `crc32("hello")` | ~0.3ms | Software CRC-32 |
-| `gpio_put` / `gpio_get` | ~0.4ms | GPIO toggle |
-| `clock_get()` | ~0.3ms | Software clock read |
-| `flash_save` (10 bytes) | ~15ms | Flash write (sector erase) |
-| `flash_load` | ~0.5ms | Flash read (XIP) |
-| `trng_read()` | ~2ms | 32-bit entropy from PIO TRNG |
-
-### SRVM Architecture
+| `1+1` | 0.5ms | Expression parse + eval |
+| `sha256("hello")` | 1.2ms | 5 bytes, hardware SHA-256 |
+| `sha256` (256 bytes) | 3ms | DMA streaming path |
+| `crc32("hello")` | 0.3ms | Software CRC-32 |
+| `gpio_put/get` | 0.4ms | GPIO toggle |
+| `clock_get()` | 0.3ms | Software clock read |
+| `flash_save` (10B) | 15ms | Flash sector erase + write |
+| `flash_load` | 0.5ms | Flash XIP read |
+| `trng_read()` | 2ms | 32-bit PIO TRNG entropy |
+| `help` | 0.3ms | Shell command |
+| `version` | 0.2ms | Shell command |
 
 SRVM (Sage RISC-V Machine) is a compact bytecode format using fixed 32-bit RISC-V instructions. The `sgvmc --riscv` compiler produces `.sgrv` files (~200 bytes for simple programs). Our on-device `rvvm.h` interpreter now supports SRVM's `OP_VMSYS` (0x73) opcode for VM operations (HALT, PRINT, GET/SET_GLOBAL) and includes a 64-entry heap dict for global variable storage.
 
