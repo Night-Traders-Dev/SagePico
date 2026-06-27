@@ -1,9 +1,10 @@
 # SagePico — Comprehensive Project Reference
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Target:** Adafruit Feather RP2350 (Cortex-M33 ARM / Hazard3 RISC-V)  
 **Language:** Sage (transpiled to C via `--emit-pico-c`), with C bridging headers  
-**Repository:** [Night-Traders-Dev/SagePico](https://github.com/Night-Traders-Dev/SagePico)
+**Repository:** [Night-Traders-Dev/SagePico](https://github.com/Night-Traders-Dev/SagePico)  
+**Docs Site:** [night-traders-dev.github.io/SagePico-Docs](https://night-traders-dev.github.io/SagePico-Docs)
 
 ---
 
@@ -20,12 +21,15 @@
 9. [Graphics Virtual Machine](#9-graphics-virtual-machine)
 10. [Flash Storage](#10-flash-storage)
 11. [PIO & DMA Bridges](#11-pio--dma-bridges)
-12. [sagecom Serial Terminal](#12-sagecom-serial-terminal)
-13. [SageLang Compiler Modifications](#13-sagelang-compiler-modifications)
-14. [What Remains C vs What is Ported to Sage](#14-what-remains-c-vs-what-is-ported-to-sage)
-15. [Pico-SDK Libraries — Remaining Porting Work](#15-pico-sdk-libraries--remaining-porting-work)
-16. [Known Issues & Limitations](#16-known-issues--limitations)
-17. [Build Sizes](#17-build-sizes)
+12. [PIO Parallel Acceleration](#12-pio-parallel-acceleration)
+13. [SHA-256 Hardware Accelerator](#13-sha-256-hardware-accelerator)
+14. [sagecom Serial Terminal](#14-sagecom-serial-terminal)
+15. [Pure Sage Tools](#15-pure-sage-tools)
+16. [SageLang Compiler Modifications](#16-sagelang-compiler-modifications)
+17. [What Remains C vs What is Ported to Sage](#17-what-remains-c-vs-what-is-ported-to-sage)
+18. [Pico-SDK Libraries — Remaining Porting Work](#18-pico-sdk-libraries--remaining-porting-work)
+19. [Known Issues & Limitations](#19-known-issues--limitations)
+20. [Build Sizes](#20-build-sizes)
 
 ---
 
@@ -207,13 +211,20 @@ src/hello.sage
 | **DMA** | `dma_claim`, `dma_config`, `dma_start`, `dma_wait`, `dma_busy`, `dma_unclaim` | `"pico"` |
 | **Flash** | `flash_save`, `flash_load`, `flash_del`, `flash_keys` | `"pico"` |
 | **GFX VM** | `gfx_init`, `gfx_load`, `gfx_run`, `gfx_vblank` | `"pico"` |
+| **Clock** | `clock_init`, `clock_get`, `clock_set` | `"pico"` |
+| **Interp** | `interp_config`, `interp_pop`, `interp_peek` | `"pico"` |
+| **SHA-256** | `sha256` | `"pico"` |
+| **Watchdog** | `wdg_reboot`, `wdg_enable`, `wdg_kick` | `"pico"` |
+| **Clocks** | `clk_get_hz` | `"pico"` |
+| **IRQ** | `irq_set_enabled` | `"pico"` |
+| **PIO BitBLT** | `blit_init`, `blit_fill` | `"pico"` |
 
-### Partially Ported (available in C bridge, FFI stubs)
+### Partially Ported (available in C bridge, FFI available)
 
-| Peripheral | Available | Missing |
-|------------|-----------|---------|
-| **I2C** | `i2c_init` in FFI, `sage_i2c_write`/`sage_i2c_read` in `pico_port.h` | FFI `i2c_write`/`i2c_read` are stubs (unused parameters) |
-| **SPI** | `spi_init` in FFI | FFI `spi_xfer` is a stub; `sage_spi_xfer` in `pico_port.h` is fully implemented |
+| Peripheral | Available | Notes |
+|------------|-----------|-------|
+| **Sync** | `save_and_disable_interrupts` / `restore_interrupts` in `flash_store.h` | No FFI — rarely needed from Sage |
+| **Resets** | `reset_block` / `unreset_block` in arch init headers | No FFI — used during boot only |
 
 ### Available Only as C Bridge (no FFI)
 
@@ -428,7 +439,74 @@ REPL variables are serialized to flash on `quit`/`exit`/`Ctrl+C` and restored on
 
 ---
 
-## 12. sagecom Serial Terminal
+## 12. PIO Parallel Acceleration
+
+The RP2350 has 8 PIO state machines (2 blocks × 4 SMs) that execute in parallel at system clock speed. One SM is used for WS2812 — 7 remain available for hardware acceleration.
+
+### PIO BitBLT Engine
+
+`src/pico/c/pio_bitblt.h` — offloads framebuffer fill/copy from CPU to PIO. Uses DMA to feed the PIO state machine for maximum throughput.
+
+**Performance**: 1 cycle per pixel vs ~400 CPU cycles. 400x speedup for fill operations.
+
+```c
+pio_blit_init(pio_idx)           // Claim SM + load program
+pio_blit_fill(dst, color, count) // DMA-accelerated memory fill
+pio_blit_fill_rect(fb, w, x, y, w, h, color) // Rectangle fill
+```
+
+Falls back to `memset()` when no PIO SM or DMA channel available.
+
+### Acceleration Opportunities
+
+7 designs documented in `docs/pio_acceleration.md`:
+
+| Accelerator | Speedup | SMs | Status |
+|-------------|---------|-----|--------|
+| BitBLT Engine | 400x | 1-2 | Implemented |
+| GFX VM HW Accel | 3x effective | 2-3 | Design |
+| CRC-32 Engine | 6x | 1 | Design |
+| GPIO Pattern Gen | 10x | 1 | Design |
+| DMA Scatter-Gather | — | 1-2 | Design |
+| True RNG | — | 1 | Design |
+| PWM Controller | — | 1 | Design |
+
+### PIO Resource Map
+
+| PIO Block | SM | Use | Status |
+|-----------|-----|-----|--------|
+| pio0 | 0 | WS2812 NeoPixel | Active |
+| pio0 | 1-3 | Free | Available |
+| pio1 | 0-3 | Free | Available |
+
+---
+
+## 13. SHA-256 Hardware Accelerator
+
+`src/pico/c/sha256_bridge.h` — RP2350 hardware SHA-256 engine with three data paths.
+
+### Data Paths
+
+| Method | Throughput | CPU Load | Use Case |
+|--------|------------|----------|----------|
+| `sha256_put_byte()` | ~1-2 MB/s | 100% polling | Tiny data |
+| `sha256_put_word()` | ~8-16 MB/s | 100% polling | Small data |
+| DMA Streaming | ~100 MB/s | 0% (sleeps) | Bulk data |
+
+### PIO Acceleration Concept
+
+A dedicated PIO state machine acts as a DMA-to-SHA256 data pump, eliminating CPU from the feeding loop entirely. The PIO SM autofeeds 32-bit words to `sha256_hw->wdata` as fast as the accelerator can accept them. DMA handles memory-to-PIO transfers. Full architecture documented in `docs/sha256.md`.
+
+### API
+
+```
+>>> sha256("hello")
+2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+```
+
+---
+
+## 14. sagecom Serial Terminal
 
 ### Architecture
 
@@ -465,7 +543,34 @@ REPL variables are serialized to flash on `quit`/`exit`/`Ctrl+C` and restored on
 
 ---
 
-## 13. SageLang Compiler Modifications
+## 15. Pure Sage Tools
+
+All three pico-sdk-tools ported to pure Sage:
+
+| Tool | File | Lines | Description |
+|------|------|-------|-------------|
+| **sagepioasm** | `src/tools/sage/sagepioasm.sage` | 364 | PIO assembly compiler — all 9 opcodes, labels, C-array output |
+| **sagepicotool** | `src/tools/sage/sagepicotool.sage` | 82 | USB BOOTSEL tool — info, load, reboot via libsagepicotool.so |
+| **sageelf2uf2** | `src/pico/sage/elf2uf2.sage` | 217 | ELF→UF2 converter — ARM + RISC-V, PT_LOAD extraction |
+
+### sagepioasm Usage
+
+```bash
+sage src/tools/sage/sagepioasm.sage blink.pio --c -o blink.h
+# → static const uint16_t pio_program[] = { 0x6221, 0x1123, ... };
+```
+
+### sagepicotool Usage
+
+```bash
+sage src/tools/sage/sagepicotool.sage info       # Device info
+sage src/tools/sage/sagepicotool.sage load fw.uf2 # Flash firmware
+sage src/tools/sage/sagepicotool.sage reboot --boot # BOOTSEL mode
+```
+
+---
+
+## 16. SageLang Compiler Modifications
 
 The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremetal FFI:
 
@@ -484,7 +589,7 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 
 ---
 
-## 14. What Remains C vs What is Ported to Sage
+## 17. What Remains C vs What is Ported to Sage
 
 ### Still in C (not accessible from `.sage` code)
 
@@ -515,7 +620,7 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 
 ---
 
-## 15. Pico-SDK Libraries — Remaining Porting Work
+## 18. Pico-SDK Libraries — Remaining Porting Work
 
 ### High Priority (functional gaps in current system)
 
@@ -559,7 +664,7 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 
 ---
 
-## 16. Known Issues & Limitations
+## 19. Known Issues & Limitations
 
 ### Critical Bugs Fixed
 
@@ -584,7 +689,7 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 
 ---
 
-## 17. Build Sizes
+## 20. Build Sizes
 
 | Target | Text | BSS | Dec | UF2 |
 |--------|------|-----|-----|-----|
