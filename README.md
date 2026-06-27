@@ -1,6 +1,6 @@
 # SagePico: SageLang for RP2350
 
-Build bootable UF2 firmware from Sage source targeting the Feather RP2350 (Cortex-M33 ARM / Hazard3 RISC-V). Headless REPL with 67 FFI functions, flash persistence, PIO accelerators, and pure Sage tools.
+Build bootable UF2 firmware from Sage source targeting the Feather RP2350 (Cortex-M33 ARM / Hazard3 RISC-V). Headless REPL with 89 FFI functions, 100% pico-sdk coverage (35/35 libraries), PIO accelerators, and native Sage tools.
 
 **Docs Site:** [night-traders-dev.github.io/SagePico-Docs](https://night-traders-dev.github.io/SagePico-Docs)
 
@@ -8,7 +8,7 @@ Build bootable UF2 firmware from Sage source targeting the Feather RP2350 (Corte
 
 ```bash
 ./build.sh arm                    # Build for ARM (94K firmware)
-picotool load -f build/hello-arm.uf2  # Flash
+sagepicotool load -f build/hello-arm.uf2  # Flash (our Sage port!)
 sagecom --port /dev/ttyACM0       # Connect
 ```
 
@@ -44,7 +44,7 @@ examples/hello.sage → sage --emit-pico-c → hello.c → patching → CMake + 
 examples/hello.sage → sagevm compile --riscv → examples/hello.sgrv
 ```
 
-## Native Bridge & FFI (67 functions, 18 categories)
+## Native Bridge & FFI (89 functions, 18 categories)
 
 | Category | Functions |
 |----------|-----------|
@@ -66,6 +66,10 @@ examples/hello.sage → sagevm compile --riscv → examples/hello.sgrv
 | **Watchdog** | `wdg_reboot`, `wdg_enable`, `wdg_kick` |
 | **PIO Accel** | `crc32`, `trng_init`, `trng_read`, `pattern_init`, `pattern_out`, `pwm_pio_init`, `pwm_pio_set` |
 | **BitBLT** | `blit_init`, `blit_fill` |
+| **System** | `vreg_get`, `vreg_set`, `clk_get`, `clk_gpout`, `xip_enable`, `xip_disable`, `xip_flush` |
+| **Exception** | `exc_install` |
+| **Power** | `powman_dormant` |
+| **Low-Level** | `ticks_to_us`, `us_to_ticks`, `sync_lock`, `sync_unlock`, `spin_claim`, `hw_div`, `hw_mod`, `pll_freq`, `xosc_init`, `rv_cycle`, `rv_instret`, `rv_timer`, `rcp_avail` |
 
 ## Performance Benchmarks
 
@@ -109,22 +113,38 @@ On-device expression parser with arithmetic, variables, multi-line input, shell 
 ## Project Structure
 
 ```
-examples/           # hello.sage, blink.sage
+examples/               # hello.sage, blink.sage
 src/
-  arm/c/            # ARM init.h
-  riscv/c/          # RISC-V init.h  
+  arm/c/                # ARM init.h
+  riscv/c/              # RISC-V init.h
   pico/
-    c/              # 13 C bridges (sage_bridge, pio_accel, sha256, etc.)
-    sage/           # 11 pure Sage modules (gpio, time, adc, i2c, etc.)
+    c/
+      core/             # sage_bridge.h, pico_port.h
+      storage/          # flash_store.h
+      pio/              # pio_bridge.h, pio_accel.h, pio_bitblt.h
+      dma/              # dma_bridge.h
+      crypto/           # sha256_bridge.h
+      vm/               # rvvm.h, gfx_vm.h
+      system/           # sysctrl, excpm, powman, rtc, dualcore, lowlevel
+      math/             # interp_bridge.h
+      display/          # hstx_display.h
+    sage/
+      io/               # gpio, adc, pwm, uart, i2c, spi
+      time/             # time, clock
+      storage/          # flash
+      pio/              # pio
+      dma/              # dma
+      crypto/           # sha256
+      vm/               # gfx_vm, elf2uf2
   tools/
-    c/              # sagecom_tty.c, sagepicotool.c
-    sage/           # sagecom.sage, sagepioasm.sage, sagepicotool.sage
+    c/                  # sagecom_tty.c, sagepicotool.c
+    sage/               # sagecom.sage, sagepioasm.sage, sagepicotool.sage
 tests/
-  bench/            # Benchmarking suite
-  test_*.py         # Hardware-in-the-loop tests (69 tests, 8 suites)
-docs/               # Full documentation (12 files + site submodule)
-build/              # Output UF2 files
-deps/               # Git submodules (sagelang, pico-sdk, SageVM)
+  bench/                # Benchmarking suite
+  test_*.py             # Hardware-in-the-loop tests
+docs/                   # Full documentation + site submodule
+build/                  # Output UF2 files
+deps/                   # Git submodules
 ```
 
 ## Architecture Support
