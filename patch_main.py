@@ -18,7 +18,7 @@ data = re.sub(r'    sage_gc_shutdown\(\);\n', '', data)
 arch_include = f'#include "init.h"'  # resolves from src/{arch}/
 data = data.replace(
     '#include "pico/stdlib.h"',
-    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "pio_bridge.h"\n#include "pio_accel.h"\n#include "pio_bitblt.h"\n#include "dma_bridge.h"\n#include "rtc_bridge.h"\n#include "powman_bridge.h"\n#include "interp_bridge.h"\n#include "sha256_bridge.h"\n#include "sysctrl_bridge.h"\n#include "excpm_bridge.h"\n#include "lowlevel_bridge.h"\n#include "srvm_loader.h"\n{arch_include}\n'
+    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "pio_bridge.h"\n#include "pio_accel.h"\n#include "pio_bitblt.h"\n#include "dma_bridge.h"\n#include "rtc_bridge.h"\n#include "powman_bridge.h"\n#include "interp_bridge.h"\n#include "sha256_bridge.h"\n#include "sysctrl_bridge.h"\n#include "excpm_bridge.h"\n#include "lowlevel_bridge.h"\n#include "srvm_loader.h"\n#include "sagertos.h"\n{arch_include}\n'
     '/* Headless: console stubs (no DVI display) */\n'
     '#define con_printf(...) do{}while(0)\n'
     '#define con_puts(s) do{}while(0)\n'

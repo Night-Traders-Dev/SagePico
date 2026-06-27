@@ -73,7 +73,7 @@ echo "[3/5] Writing CMakeLists.txt..."
 mkdir -p "$TMP_DIR"
 
 # Both ARM and RISC-V need stubs (pthread, nanosleep implementations)  
-STUBS_OPT="\"${SCRIPT_DIR}/shims/stubs.c\""
+STUBS_OPT="\"${SCRIPT_DIR}/shims/stubs.c\" \"${SCRIPT_DIR}/deps/SageRTOS/src/c/sagertos.c\""
 SHIMS_OPT="target_include_directories(hello PRIVATE \"${SCRIPT_DIR}/shims\")"
 
 cat > "${TMP_DIR}/CMakeLists.txt" << CMAKEEOF
@@ -98,6 +98,7 @@ target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico/c/system")
 target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico/c/math")
 target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/pico/c/display")
 target_include_directories(hello PRIVATE "${SCRIPT_DIR}/src/${ARCH_DIR}/c")
+target_include_directories(hello PRIVATE "${SCRIPT_DIR}/deps/SageRTOS/src/c")
 pico_enable_stdio_usb(hello 1)
 pico_enable_stdio_uart(hello 1)
 target_compile_definitions(hello PRIVATE PICO_STDIO_DEFAULT_CRLF=0)
