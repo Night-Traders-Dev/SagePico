@@ -42,7 +42,7 @@ SagePico compiles Sage source code into bootable UF2 firmware for the Adafruit F
 - **HSTX DVI display** driving 1280x800 over HDMI via hardware TMDS encoder
 - **Framebuffer console** (80x50 text, 8x8 bitmap font) mirrored to DVI display
 - **Flash-backed persistence** — variables and programs survive power cycles
-- **37 FFI functions** exposing GPIO, UART, ADC, PWM, I2C, SPI, PIO, DMA, and GFX VM
+- **59 FFI functions** exposing 18 peripheral categories via dispatch table
 - **Graphics Virtual Machine** — RISC-V RV32I bytecode interpreter with custom graphics extensions
 - **sagecom** — dedicated serial terminal written in Sage for host↔Feather interaction
 
@@ -58,7 +58,7 @@ SagePico compiles Sage source code into bootable UF2 firmware for the Adafruit F
 ## 2. Build Pipeline
 
 ```
-src/hello.sage
+examples/hello.sage
     │
     ├── sage --emit-pico-c          # Sage → C transpilation
     │   └── hello.c                  # Full Sage runtime (~1800 lines)
@@ -66,19 +66,19 @@ src/hello.sage
     ├── sed (include patching)       # dlfcn.h, pthread.h → shims
     ├── patch_stdio.py               # fputs/fputc → printf, exit → while(1)
     ├── patch_main.py                # Inject bridges, strip FFI stubs, arch init, REPL
-    │   ├── Include: pico_port.h, hstx_display.h, pio_bridge.h, dma_bridge.h, init.h
+    │   ├── Include: pico_port.h, pio_bridge.h, dma_bridge.h, rtc_bridge.h, sha256_bridge.h, pio_bitblt.h, init.h
     │   ├── Strip: sage_ffi_open/ffi_call/ffi_call_full (all SDK versions v3.8.7-v3.9.2)
     │   ├── Inject: flash_store.h, rvvm.h, gfx_vm.h, sage_bridge.h (in order)
     │   ├── Init: sage_arch_pre_init() → stdio_init_all() → sage_arch_init() → sage_arch_post_init()
-    │   ├── Display: display_init() → con_clear() → color bars → sleep_ms(3000) → sage_repl()
-    │   └── Render: inject HSTX scanline loop after sage_repl() exit (targeted, not regex)
+    │   ├── Headless: sleep_ms(2000) → printf banner → sage_repl()
+    │   └── Post-REPL: idle loop with LED heartbeat, any key re-enters REPL
     │
     ├── CMakeLists.txt               # Generated dynamically by build.sh
     │   ├── PICO_BOARD=adafruit_feather_rp2350
     │   ├── PICO_PLATFORM=rp2350-arm-s | rp2350-riscv
     │   ├── PICO_STDIO_DEFAULT_CRLF=0 (bare \n, no \r\n translation)
-    │   ├── Link: pico_stdlib hw_adc hw_pwm hw_i2c hw_spi hw_pio hw_dma
-    │   └── Include: src/pico, src/{arm|riscv}, shims
+    │   ├── Link: pico_stdlib hw_adc hw_pwm hw_i2c hw_spi hw_pio hw_dma hw_interp hw_sha256
+    │   └── Include: src/pico/c, src/{arm|riscv}/c, shims
     │
     └── arm-none-eabi-gcc | riscv32-unknown-elf-gcc
         └── hello.uf2                # Bootable firmware image
@@ -100,7 +100,7 @@ src/hello.sage
                        │ Generated C: sage_ffi_call(handle, name, ret_type, args)
 ┌──────────────────────▼──────────────────────────────────┐
 │  FFI Dispatch Table (sage_bridge.h)                     │
-│  37 entries: (handle, name) → native wrapper function   │
+│  59 entries: (handle, name) → native wrapper function    │
 │  Dispatch by dlsym-style lookup, ported from interpreter│
 └──────────────────────┬──────────────────────────────────┘
                        │ Calls sage_nv_* wrappers
@@ -130,68 +130,67 @@ src/hello.sage
 
 ## 4. Source Inventory
 
-### Sage Source (7 files, 739 lines)
+### Sage Source (12 files, ~1,200 lines)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/hello.sage` | 7 | Firmware entry point: `ffi_open("pico")`, prints boot banner |
-| `src/blink.sage` | 19 | GPIO blink demo in pure Sage via FFI |
-| `src/sagecom.sage` | 158 | Desktop serial terminal — connects to Feather over USB CDC |
-| `src/pico/gfx_vm.sage` | 286 | RISC-V RV32I assembler + Graphics VM frontend API |
-| `src/pico/elf2uf2.sage` | 217 | Pure-Sage ELF→UF2 converter for RP2350 |
-| `src/pico/gpio.sage` | 22 | Sage GPIO module stub (resolves to C bridge on-device) |
+| `examples/hello.sage` | 7 | Firmware entry point: `ffi_open("pico")`, prints boot banner |
+| `examples/blink.sage` | 19 | GPIO blink demo in pure Sage via FFI |
+| `src/tools/sage/sagecom.sage` | 158 | Desktop serial terminal — connects to Feather over USB CDC |
+| `src/tools/sage/sagepioasm.sage` | 364 | PIO assembly compiler — all 9 opcodes, labels, C-array output |
+| `src/tools/sage/sagepicotool.sage` | 82 | USB BOOTSEL tool — info, load, reboot |
+| `src/pico/sage/gfx_vm.sage` | 286 | RISC-V RV32I assembler + Graphics VM frontend API |
+| `src/pico/sage/elf2uf2.sage` | 217 | Pure-Sage ELF→UF2 converter for RP2350 |
+| `src/pico/sage/gpio.sage` | 22 | Pure Sage GPIO module |
+| `src/pico/sage/time.sage` | 14 | Pure Sage Time module |
+| `src/pico/sage/sha256.sage` | 6 | Pure Sage SHA-256 wrapper |
+| `src/pico/sage/adc.sage` | 12 | Pure Sage ADC module |
+| Plus `pwm`, `uart`, `i2c`, `spi`, `pio`, `dma`, `flash`, `clock` (.sage each) |
 
-### C Headers (10 files, 2,651 lines)
+### C Headers (16 files, ~3,500 lines)
 
 | File | Lines | Layer | Purpose |
 |------|-------|-------|---------|
-| `src/pico/sage_bridge.h` | 1,142 | FFI+SageValue | Core bridge: FFI dispatch table (37 entries), SageValue wrappers, module init, REPL parser/evaluator, command shell, flash persistence |
-| `src/pico/hstx_display.h` | 334 | C bridge | HSTX DVI driver: TMDS encoder, 640x400 256-color FB, 8x8 font, 80x50 console, GT911 touch |
-| `src/pico/rvvm.h` | 326 | C bridge | RV32I interpreter: 32 regs, 64KB RAM, full decode, graphics opcodes |
-| `src/pico/flash_store.h` | 300 | C bridge | Log-structured wear-leveled K/V store in upper 2MB flash |
-| `src/pico/pio_bridge.h` | 176 | C bridge | PIO state machine + WS2812 NeoPixel driver |
-| `src/pico/gfx_vm.h` | 145 | C bridge | GFX VM integration: ties VM to FB, flash storage, MMIO |
-| `src/pico/dma_bridge.h` | 102 | C bridge | DMA channel control: claim/config/start/wait/chain, DREQ constants |
-| `src/pico/pico_port.h` | 93 | Direct C | `static inline` wrappers for GPIO/UART/Time/ADC/PWM/I2C/SPI |
-| `src/arm/init.h` | 33 | Arch init | ARM Cortex-M33: USB reset, GPIO LED, IRQ enable |
-| `src/riscv/init.h` | 38 | Arch init | RISC-V Hazard3: USB reset, IRQ priority 0x00 fix |
+| `src/pico/c/sage_bridge.h` | 1,200+ | FFI+SageValue | Core bridge: FFI dispatch (59 entries), SageValue wrappers, REPL, shell |
+| `src/pico/c/hstx_display.h` | 334 | C bridge | HSTX DVI driver (inactive in headless mode) |
+| `src/pico/c/rvvm.h` | 326 | C bridge | RV32I interpreter: 32 regs, 64KB RAM, graphics opcodes |
+| `src/pico/c/flash_store.h` | 300 | C bridge | Log-structured wear-leveled K/V store (2MB flash) |
+| `src/pico/c/pio_bridge.h` | 176 | C bridge | PIO state machine + WS2812 NeoPixel driver |
+| `src/pico/c/gfx_vm.h` | 145 | C bridge | GFX VM integration: VM-to-FB, flash storage, MMIO |
+| `src/pico/c/dma_bridge.h` | 102 | C bridge | DMA channel control, DREQ constants |
+| `src/pico/c/pio_bitblt.h` | 100 | C bridge | PIO BitBLT accelerator: DMA-fed fill/copy engine |
+| `src/pico/c/sha256_bridge.h` | 95 | C bridge | Hardware SHA-256: word-at-a-time + DMA paths |
+| `src/pico/c/pico_port.h` | 93 | Direct C | `static inline` wrappers for GPIO/UART/Time/ADC/PWM/I2C/SPI |
+| `src/pico/c/rtc_bridge.h` | 70 | C bridge | Software clock with watchdog scratch persistence |
+| `src/pico/c/interp_bridge.h` | 45 | C bridge | Hardware interpolator: config/pop/peek/force |
+| `src/pico/c/powman_bridge.h` | 20 | C bridge | Power management: sleep, reset reason |
+| `src/arm/c/init.h` | 33 | Arch init | ARM Cortex-M33: USB reset, GPIO LED, IRQ enable |
+| `src/riscv/c/init.h` | 38 | Arch init | RISC-V Hazard3: USB reset, IRQ priority fix |
 
-### C Source (2 files, 184 lines)
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `src/pico/gpio_wrap.c` | 43 | Standalone GPIO wrapper (not linked; replaced by sage_bridge.h injection) |
-| `tools/sagecom_tty.c` | 141 | `libsagecom_tty.so` — POSIX termios helpers for sagecom |
-
-### Build Scripts (5 files, 404 lines)
+### C Source (3 files, ~230 lines)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `patch_main.py` | 118 | Post-processing: FFI stub stripping, bridge injection, arch init, render loop |
-| `build.sh` | 144 | Full build pipeline: Sage→C, patching, CMake, Pico SDK, UF2, SageVM |
-| `test.sh` | 55 | Desktop test suite |
-| `patch_stdio.py` | 42 | fputs/fputc→printf, exit→while(1) |
-| `tools/install_sagecom.sh` | 42 | sagecom launcher installation |
+| `src/pico/c/gpio_wrap.c` | 43 | Standalone GPIO wrapper (not linked) |
+| `src/tools/c/sagecom_tty.c` | 141 | `libsagecom_tty.so` — POSIX termios for sagecom |
+| `src/tools/c/sagepicotool.c` | 60 | `libsagepicotool.so` — libusb BOOTSEL communication |
 
-### Shims (7 files, 197 lines)
-
-| File | Purpose |
-|------|---------|
-| `shims/baremetal_stubs.h` | Comprehensive POSIX stubs |
-| `shims/semaphore.h` | Spinlock semaphores |
-| `shims/stubs.c` | Link-level pthread/nanosleep |
-| `shims/pthread.h` | Minimal pthread declarations |
-| `shims/baremetal_time.h` | clock/nanosleep shims |
-| `shims/dlfcn.h` | dlopen/dlsym stubs |
-| `shims/stdatomic.h` | C11 atomics via GCC builtins |
-
-### Documentation (3 files)
+### Documentation (12 files)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `docs/architecture.md` | 234 | Full architecture reference |
+| `docs/SagePico.md` | 700+ | Comprehensive project reference |
+| `docs/architecture.md` | 234 | Full architecture: bridges, flash, console, REPL |
 | `docs/graphics_vm.md` | 282 | GFX VM specification |
+| `docs/pio_acceleration.md` | 180 | 7 PIO accelerator designs |
+| `docs/pio_assembler.md` | 220 | sagepioasm reference |
+| `docs/sha256.md` | 150 | SHA-256 data paths + PIO concept |
+| `docs/sagepicotool.md` | 140 | USB protocol, UF2 format |
+| `docs/sageelf2uf2.md` | 100 | ELF parsing, block packing |
+| `docs/testing.md` | 200 | Test suite architecture |
+| `docs/future.md` | 100 | Remaining porting roadmap |
 | `docs/feather_rp2350.md` | 81 | Board pinout and reference |
+| `docs/site/` | submodule | [SagePico-Docs](https://night-traders-dev.github.io/SagePico-Docs) website |
 
 ---
 
@@ -293,7 +292,7 @@ Recursive-descent parser with precedence climbing supporting:
 - **Literals**: integers, floats, strings (`"..."`), `true`/`false`/`nil`
 - **Variables**: `let x = 42` (stored in REPL vars dict, persisted to flash)
 - **Arrays**: `[1, 2, 3]`
-- **Function calls**: all 37 FFI functions via dispatch table
+- **Function calls**: all 59 FFI functions via dispatch table
 - **String concat**: `"hello" + " world"`
 
 ### Identifiers
@@ -305,14 +304,14 @@ Must start with letter or underscore (digits not allowed as first character — 
 | Command | Description |
 |---------|-------------|
 | `help` | Show all shell commands with descriptions |
-| `version` | Firmware version (`SagePico v2.0 on RP2350`) |
+| `version` | Firmware version (`SagePico v2.1 on RP2350`) |
 | `sage` | Re-display REPL banner |
 | `free` | Memory stats (8MB flash, 520KB SRAM) |
 | `uptime` | Seconds since boot |
 | `led on` / `led off` | Toggle GPIO 7 LED |
 | `reboot` | Watchdog reboot |
 | `reboot --boot` | Reboot to BOOTSEL mode (for firmware update) |
-| `quit` / `exit` | Save vars to flash, exit REPL, resume DVI render loop |
+| `quit` / `exit` | Save vars to flash, exit REPL, resume idle loop |
 | `procs` | List programs stored in flash |
 | `save <name>` | Save multi-line input buffer to flash |
 | `run <name>` | Load and execute stored program line-by-line |
@@ -616,31 +615,23 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 | `sagecom.sage` | Serial terminal logic in Sage, delegates I/O to C helper |
 | `blink.sage` | GPIO blink demo using FFI |
 | `hello.sage` | Firmware entry point using FFI |
-| All 37 FFI functions | Accessible from Sage via `ffi_call(pico, "name", args)` |
+| All 59 FFI functions | Accessible from Sage via `ffi_call(pico, "name", args)` |
 
 ---
 
 ## 18. Pico-SDK Libraries — Remaining Porting Work
 
-### High Priority (functional gaps in current system)
+### High Priority (all completed ✓)
 
-| Library | What's Missing | FFI Functions to Add |
-|---------|---------------|---------------------|
-| `hardware_i2c` | `i2c_write`/`i2c_read` are FFI stubs | `i2c_write(addr, data_bytes)`, `i2c_read(addr, len)` — port `i2c_write_blocking`/`i2c_read_blocking` to SageValue wrappers |
-| `hardware_spi` | `spi_xfer` is FFI stub | `spi_transfer(tx_data)` / `spi_transfer_full(tx, rx, len)` — port `spi_write_read_blocking` |
-| `hardware_rtc` | Not ported | `rtc_init()`, `rtc_get_datetime()`, `rtc_set_datetime()`, `rtc_set_alarm()` |
-| `hardware_watchdog` | `watchdog_reboot` used in C bridge only | `wdg_enable(timeout)`, `wdg_kick()`, `wdg_reboot()`, `wdg_get_scratch(n)` / `wdg_set_scratch(n, val)` |
+All high-priority libraries are now ported with FFI access: I2C, SPI, watchdog, clocks (partial), SHA-256, interp.
 
 ### Medium Priority (system control)
 
 | Library | FFI Functions to Add |
 |---------|---------------------|
-| `hardware_clocks` | `clk_get_hz(clock)`, `clk_set_divider(clock, div)`, `clk_gpout_init(pin, src, div)` |
-| `hardware_interp` | Interpolator lane control: accumulator, base, mask, shift, pop results |
-| `hardware_irq` | `irq_set_enabled(n, bool)`, `irq_get_priority(n)` |
+| `hardware_clocks` | Full clock tree: `clk_set_divider(clock, div)`, `clk_gpout_init(pin, src, div)` |
 | `hardware_powman` | `sleep_goto_sleep_until(edges)`, `sleep_run_from_xosc()`, dormant mode |
 | `hardware_resets` | `reset_block(bits)`, `unreset_block(bits)`, `unreset_block_wait(bits)` |
-| `hardware_sha256` | `sha256_start()`, `sha256_update(data, len)`, `sha256_finish(hash_out)` |
 | `hardware_sync` | `save_and_disable_interrupts()`, `restore_interrupts()`, `spin_lock_claim(n)` |
 | `hardware_timer` | `timer_hw->timelw/timehw` read, `add_alarm_in_ms(ms, callback)` |
 | `hardware_vreg` | `vreg_set_voltage(voltage)`, `vreg_get_voltage()` |
@@ -679,13 +670,12 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 
 ### Known Limitations
 
-- **I2C/SPI FFI stubs**: `i2c_write`/`i2c_read`/`spi_xfer` in FFI dispatch are stubs. Use `pico_port.h` C bridge functions directly for now.
 - **Graphics VM**: LINE and SPRITE instructions are reserved but not implemented. FILL/BLIT/FLIP/VSYNC work.
-- **REPL**: No control flow (`if`/`while`/`proc` in multi-line). Programs stored as raw text, executed line-by-line.
-- **Flash store**: Maximum key size 63 bytes, value size 255 bytes per entry. Compaction may pause briefly.
-- **Display**: Framebuffer is 256-color indexed (8bpp), not true color. Color fidelity limited.
+- **REPL**: No control flow (`if`/`while`/`proc` execution). Programs stored as raw text, executed line-by-line.
+- **Flash store**: Maximum key size 63 bytes, value size 255 bytes per entry.
+- **Display**: Framebuffer is 256-color indexed (8bpp). HSTX driver inactive in current headless firmware.
 - **RISC-V**: Larger binary size (208K vs 164K ARM). Same feature set.
-- **sagecom**: Requires `libsagecom_tty.so` installed. Pointer operations must stay in C helper.
+- **sagecom**: Requires `libsagecom_tty.so` + `libsagepicotool.so` installed.
 
 ---
 
@@ -693,7 +683,7 @@ The SageLang compiler (`deps/sagelang`, v3.9.2) was modified to support baremeta
 
 | Target | Text | BSS | Dec | UF2 |
 |--------|------|-----|-----|-----|
-| ARM Cortex-M33 | 87,576 | 72,804 | 160,380 | 164K |
+| ARM Cortex-M33 | 94,552 | 72,312 | 166,864 | 164K |
 | RISC-V Hazard3 | ~105,000 | ~72,000 | ~177,000 | 208K |
 
 BSS breakdown (both architectures):
@@ -710,4 +700,4 @@ Flash usage (ARM):
 
 ---
 
-*Generated from SagePico commit `2871659` — SageLang v3.9.2, Feather RP2350 dual-architecture*
+*Generated from SagePico v2.1 — SageLang v3.9.2, Feather RP2350 dual-architecture*
