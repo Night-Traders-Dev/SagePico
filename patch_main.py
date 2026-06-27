@@ -54,10 +54,10 @@ for pattern in [
 
 # 4. Inject flash_store.h, rvvm.h, gfx_vm.h, sage_bridge.h
 base = os.path.dirname(__file__)
-with open(os.path.join(base, 'src', 'pico', 'sage_bridge.h')) as f: bridge_code = f.read()
-with open(os.path.join(base, 'src', 'pico', 'flash_store.h')) as f: flash_code = f.read()
-with open(os.path.join(base, 'src', 'pico', 'rvvm.h')) as f: rvvm_code = f.read()
-with open(os.path.join(base, 'src', 'pico', 'gfx_vm.h')) as f: gfxvm_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'c', 'sage_bridge.h')) as f: bridge_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'c', 'flash_store.h')) as f: flash_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'c', 'rvvm.h')) as f: rvvm_code = f.read()
+with open(os.path.join(base, 'src', 'pico', 'c', 'gfx_vm.h')) as f: gfxvm_code = f.read()
 data = data.replace(
     'static SageValue sage_init_native_module(const char* name) {\n'
     '    /* For now, just return an empty dict; real native modules should be linked */\n'
