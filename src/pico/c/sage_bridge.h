@@ -540,6 +540,32 @@ static SageValue sage_ffi_blit_fill_wrap(int argc, SageValue* argv) {
     }
     return sage_nil();
 }
+/* PIO Accelerator wrappers */
+static SageValue sage_ffi_crc32_wrap(int argc, SageValue* argv) {
+    return sage_string(sage_crc32(sv_str(argv[0])));
+}
+static SageValue sage_ffi_trng_init_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    return sage_number((double)sage_trng_init(sv_int(argv[0])));
+}
+static SageValue sage_ffi_trng_read_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_trng_read());
+}
+static SageValue sage_ffi_pattern_init_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_pattern_init(sv_int(argv[0]), sv_int(argv[1])));
+}
+static SageValue sage_ffi_pattern_out_wrap(int argc, SageValue* argv) {
+    sage_pattern_out((uint32_t)sv_int(argv[0]), (uint32_t)sv_int(argv[1]));
+    return sage_nil();
+}
+static SageValue sage_ffi_pwm_pio_init_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_pwm_pio_init(sv_int(argv[0]), sv_int(argv[1])));
+}
+static SageValue sage_ffi_pwm_pio_set_wrap(int argc, SageValue* argv) {
+    sage_pwm_pio_set((uint32_t)sv_int(argv[0]), (uint32_t)sv_int(argv[1]));
+    return sage_nil();
+}
 /* Watchdog wrappers */
 static SageValue sage_ffi_wdg_reboot_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv; watchdog_reboot(0, 0, 0); while(1); return sage_nil();
@@ -619,6 +645,13 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "irq_set_enabled",sage_ffi_irq_enabled_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "blit_init",     sage_ffi_blit_init_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "blit_fill",     sage_ffi_blit_fill_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "crc32",         sage_ffi_crc32_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "trng_init",     sage_ffi_trng_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "trng_read",     sage_ffi_trng_read_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pattern_init",  sage_ffi_pattern_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pattern_out",   sage_ffi_pattern_out_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pwm_pio_init",  sage_ffi_pwm_pio_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pwm_pio_set",   sage_ffi_pwm_pio_set_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
