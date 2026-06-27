@@ -18,3 +18,4 @@ Thumbs.db
 
 # Deps (submodule managed)
 # deps/ contents are gitignored by submodule
+__pycache__/
