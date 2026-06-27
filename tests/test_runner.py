@@ -107,6 +107,7 @@ if __name__ == "__main__":
     from test_gpio import run_gpio_tests
     from test_clock import run_clock_tests
     from test_flash import run_flash_tests
+    from test_pioasm import run_pioasm_tests
 
     filter_tests = [a for a in args if not a.startswith("--")]
 
