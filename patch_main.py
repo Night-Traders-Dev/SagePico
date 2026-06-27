@@ -71,6 +71,9 @@ data = data.replace(
     '    stdio_init_all();\n    sleep_ms(2000);',
     '    sage_arch_pre_init();\n'
     '    stdio_init_all();\n'
+    '    /* Force LF-only output (no \\r before \\n) */\n'
+    '    extern stdio_driver_t stdio_usb;\n'
+    '    stdio_set_translate_crlf(&stdio_usb, false);\n'
     '    sage_arch_init();\n'
     '    sage_arch_post_init();\n'
     '    sleep_ms(2000);\n'
