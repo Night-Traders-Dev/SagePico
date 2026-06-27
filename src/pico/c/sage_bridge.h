@@ -599,6 +599,52 @@ static SageValue sage_ffi_powman_dormant_wrap(int argc, SageValue* argv) {
     sage_powman_dormant((uint)sv_int(argv[0]), (uint)sv_int(argv[1]));
     return sage_nil();
 }
+/* Low-level hardware wrappers */
+static SageValue sage_ffi_ticks_us_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_ticks_to_us((uint64_t)sv_int(argv[0])));
+}
+static SageValue sage_ffi_us_ticks_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_us_to_ticks((uint64_t)sv_int(argv[0])));
+}
+static SageValue sage_ffi_sync_lock_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_sync_save_disable());
+}
+static SageValue sage_ffi_sync_unlock_wrap(int argc, SageValue* argv) {
+    sage_sync_restore((uint32_t)sv_int(argv[0])); return sage_nil();
+}
+static SageValue sage_ffi_spin_claim_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_spin_lock_claim());
+}
+static SageValue sage_ffi_hw_div_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_hw_div_s32((int32_t)sv_int(argv[0]), (int32_t)sv_int(argv[1])));
+}
+static SageValue sage_ffi_hw_mod_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_hw_mod_s32((int32_t)sv_int(argv[0]), (int32_t)sv_int(argv[1])));
+}
+static SageValue sage_ffi_pll_freq_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_pll_get_freq(sv_int(argv[0])));
+}
+static SageValue sage_ffi_xosc_init_wrap(int argc, SageValue* argv) {
+    sage_xosc_init((uint32_t)sv_int(argv[0])); return sage_nil();
+}
+static SageValue sage_ffi_rv_cycle_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_riscv_mcycle());
+}
+static SageValue sage_ffi_rv_inst_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_riscv_minstret());
+}
+static SageValue sage_ffi_rv_timer_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_riscv_timer_get());
+}
+static SageValue sage_ffi_rcp_avail_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_bool(sage_rcp_available());
+}
 /* Watchdog wrappers */
 static SageValue sage_ffi_wdg_reboot_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv; watchdog_reboot(0, 0, 0); while(1); return sage_nil();
@@ -694,6 +740,19 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "xip_flush",     sage_ffi_xip_flush_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "exc_install",   sage_ffi_exc_install_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "powman_dormant",sage_ffi_powman_dormant_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "ticks_to_us",  sage_ffi_ticks_us_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "us_to_ticks",  sage_ffi_us_ticks_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "sync_lock",    sage_ffi_sync_lock_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "sync_unlock",  sage_ffi_sync_unlock_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "spin_claim",   sage_ffi_spin_claim_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "hw_div",       sage_ffi_hw_div_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "hw_mod",       sage_ffi_hw_mod_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "pll_freq",     sage_ffi_pll_freq_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "xosc_init",    sage_ffi_xosc_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "rv_cycle",     sage_ffi_rv_cycle_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "rv_instret",   sage_ffi_rv_inst_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "rv_timer",     sage_ffi_rv_timer_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "rcp_avail",    sage_ffi_rcp_avail_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
