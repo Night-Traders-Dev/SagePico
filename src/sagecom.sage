@@ -94,7 +94,7 @@ ffi_call(libtty, "sagecom_serial_drain", "void", [serial_fd])
 
 # Print banner atomically (single write call to minimize race window)
 # Print status line (no box-drawing — terminal-agnostic)
-let banner = "sagecom: " + port_path + " @ " + str(baud_rate) + " baud  ~. to quit\n\n"
+let banner = "sagecom: " + port_path + " @ " + str(baud_rate) + " baud  ~. to quit\r\n\r\n"
 out(banner)
 
 # ---- Main loop ----
@@ -102,17 +102,19 @@ let escape_mode = false
 let frame = 0
 
 while running:
-    # Read from serial (string-based, no pointer args)
+    # Read from serial
     let raw = ffi_str("sagecom_serial_read", [serial_fd])
-    # Strip \r characters (Feather sends \r\n, we want just \n)
-    let data = ""
-    let j = 0
-    while j < len(raw):
-        let c = raw[j]
-        if c != "\r":
-            data = data + c
-        j = j + 1
-    if data != "":
+    if raw != "":
+        # Convert \n to \r\n for proper terminal display
+        let data = ""
+        let j = 0
+        while j < len(raw):
+            let c = raw[j]
+            if c == "\n":
+                data = data + "\r\n"
+            else:
+                data = data + c
+            j = j + 1
         out(data)
 
     # Read from stdin (string-based)
