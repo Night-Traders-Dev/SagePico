@@ -984,6 +984,44 @@ static SageValue sage_repl_parse_call(const char* s, int* pos) {
                 }
             }
         }
+
+        /* Property access: obj.prop or obj.prop(args) */
+        if (s[*pos] == '.' && v.type == SAGE_TAG_DICT) {
+            (*pos)++; /* skip '.' */
+            char prop[64];
+            if (sage_repl_parse_ident(s, pos, prop, sizeof(prop))) {
+                SageValue pv = sage_dict_get(v.as.dict, prop);
+                sage_repl_skip_ws(s, pos);
+                if (s[*pos] == '(') {
+                    /* Method call: obj.method(args) */
+                    (*pos)++;
+                    SageValue pargs = sage_array();
+                    while (1) {
+                        sage_repl_skip_ws(s, pos);
+                        if (s[*pos] == ')') { (*pos)++; break; }
+                        SageValue a = sage_repl_parse_expr(s, pos);
+                        sage_array_push_raw(pargs.as.array, a);
+                        sage_repl_skip_ws(s, pos);
+                        if (s[*pos] == ',') (*pos)++;
+                        else if (s[*pos] == ')') { (*pos)++; break; }
+                    }
+                    /* Check FFI dispatch for the method name */
+                    for (size_t i = 0; i < SAGE_FFI_TABLE_LEN; i++) {
+                        if (strcmp(sage_ffi_table[i].name, prop) == 0) {
+                            SageNativeFn fn = (SageNativeFn)sage_ffi_table[i].fn;
+                            SageValue argv2[8];
+                            int ac = pargs.as.array->count;
+                            if (ac > 8) ac = 8;
+                            for (int j = 0; j < ac; j++) argv2[j] = pargs.as.array->elements[j];
+                            return fn(ac, argv2);
+                        }
+                    }
+                    printf("  (no method '%s')\n", prop);
+                    return sage_nil();
+                }
+                return pv; /* Property access without call */
+            }
+        }
         return v;
     }
 
