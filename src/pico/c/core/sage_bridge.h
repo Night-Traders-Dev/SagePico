@@ -1286,6 +1286,29 @@ static void sage_repl(void) {
 
         if (!in_multiline && idx == 0) continue;
 
+        /* Colon commands (:help, :quit, etc.) */
+        if (!in_multiline && line[0] == ':') {
+            if (strcmp(line, ":quit") == 0 || strcmp(line, ":exit") == 0 || strcmp(line, ":q") == 0) {
+                printf("  Goodbye.\n"); flash_persist_repl_vars(); break;
+            }
+            if (strcmp(line, ":help") == 0 || strcmp(line, ":h") == 0) {
+                printf("\n  :help :quit :stats :vars :clear\n  Shell: help,version,free,uptime,reboot,led\n  Sage: import <mod>, let x=expr, expr\n\n");
+                continue;
+            }
+            if (strcmp(line, ":stats") == 0) {
+                uint32_t ms = to_ms_since_boot(get_absolute_time());
+                printf("  Uptime: %u.%03us | Vars: %d\n", (unsigned)(ms/1000),(unsigned)(ms%%1000), sage_repl_vars.as.dict->count);
+                continue;
+            }
+            if (strcmp(line, ":vars") == 0) {
+                SageDict* dict = sage_repl_vars.as.dict;
+                for (int i = 0; i < dict->count; i++) { printf("  %s = ", dict->keys[i]); sage_print_value(dict->values[i]); printf("\n"); }
+                continue;
+            }
+            printf("  Unknown '%s'. Type :help\n", line);
+            continue;
+        }
+
         /* Check for commands */
         if (!in_multiline) {
             if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
