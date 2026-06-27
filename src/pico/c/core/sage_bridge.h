@@ -1112,12 +1112,25 @@ static void sage_repl_eval(const char* cmd) {
         return;
     }
     if (strcmp(cmd + pos, "sage") == 0) {
-        /* Already in REPL — just show the banner again */
-        printf("\n=== Sage REPL ===\n");
-        printf("Multi-line: end line with : to continue, blank line to finish\n");
-        printf("Commands: procs, save <name>, run <name>, load <name>, edit <name>\n");
-        printf("Ctrl+C to exit REPL, resume display\n\n");
-        con_printf("\n=== Sage REPL ===\n");
+        /* Full Sage REPL banner */
+        printf("\n┌─────────────────────────────────────────┐\n");
+        printf("│  SageLang 3.9.2 — SagePico v2.1        │\n");
+        printf("│  RP2350 @ 150 MHz — 520KB SRAM          │\n");
+        printf("│  Type 'help' for commands               │\n");
+        printf("└─────────────────────────────────────────┘\n\n");
+        con_printf("\n  Sage REPL — type 'help' for commands\n\n");
+        return;
+    }
+    if (strncmp(cmd + pos, "import ", 7) == 0) {
+        char* modname = (char*)(cmd + pos + 7);
+        while (*modname == ' ') modname++;
+        char name[32]; int j = 0;
+        while (*modname && *modname != ' ' && j < 30) name[j++] = *modname++;
+        name[j] = 0;
+        SageValue mod = sage_init_native_module(name);
+        sage_dict_set(sage_repl_vars.as.dict, name, mod);
+        printf("  imported '%s'\n", name);
+        con_printf("  imported '%s'\n", name);
         return;
     }
     if (strcmp(cmd + pos, "reboot") == 0 || strncmp(cmd + pos, "reboot ", 7) == 0) {
@@ -1186,8 +1199,10 @@ static void sage_repl_eval(const char* cmd) {
 
 /* Mini REPL using printf/scanf over USB CDC */
 static void sage_repl(void) {
-    printf("\n=== Sage REPL ===\n");
+    printf("\n=== SageLang 3.9.2 — SagePico v2.1 ===\n");
     con_printf("\n=== Sage REPL ===\n");
+    printf("RP2350 @ 150 MHz | 520KB SRAM | 8MB Flash\n");
+    con_puts("RP2350 @ 150 MHz | 520KB SRAM | 8MB Flash\n");
     printf("Shell: help, version, reboot, sage\n");
     con_puts("Shell: help, version, reboot, sage\n");
     printf("Multi-line: end line with : to continue, blank line to finish\n");
