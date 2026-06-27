@@ -29,44 +29,28 @@ static void sage_sync_restore(uint32_t state) {
 static int sage_spin_lock_claim(void) {
     return spin_lock_claim_unused(true);
 }
-static void sage_spin_unlock(uint num) {
-    spin_unlock_unsafe(spin_lock_instance(num));
-}
-
-/* ---- hardware_sync_spin_lock — Low-level hardware spin locks ---- */
-static uint32_t sage_hw_spin_lock(uint n) {
-    return spin_lock_blocking(spin_lock_instance(n));
-}
-static void sage_hw_spin_unlock(uint n, uint32_t saved) {
-    spin_unlock(spin_lock_instance(n), saved);
-}
 
 /* ---- hardware_divider — Hardware integer division ---- */
 static int32_t sage_hw_div_s32(int32_t a, int32_t b) {
     if (b == 0) return 0;
-    hw_divider_divmod_s32_start(a, b);
-    hw_divider_wait_ready();
-    return hw_divider_result_s32();
+    divmod_result_t r = hw_divider_divmod_s32(a, b);
+    return (int32_t)(r & 0xFFFFFFFF);
 }
-
 static uint32_t sage_hw_div_u32(uint32_t a, uint32_t b) {
     if (b == 0) return 0;
-    hw_divider_divmod_u32_start(a, b);
-    hw_divider_wait_ready();
-    return hw_divider_result_u32();
+    divmod_result_t r = hw_divider_divmod_u32(a, b);
+    return (uint32_t)(r & 0xFFFFFFFF);
 }
-
 static int32_t sage_hw_mod_s32(int32_t a, int32_t b) {
     if (b == 0) return 0;
-    hw_divider_divmod_s32_start(a, b);
-    hw_divider_wait_ready();
-    return hw_divider_remainder_s32();
+    divmod_result_t r = hw_divider_divmod_s32(a, b);
+    return (int32_t)(r >> 32);
 }
 
-/* ---- hardware_pll — PLL configuration ---- */
+/* ---- hardware_pll — PLL configuration (stub — complex API) ---- */
 static uint32_t sage_pll_get_freq(int pll) {
-    if (pll == 0) return pll_sys_hw->csr;
-    if (pll == 1) return pll_usb_hw->csr;
+    if (pll == 0) return clock_get_hz(clk_sys);
+    if (pll == 1) return clock_get_hz(clk_usb);
     return 0;
 }
 
