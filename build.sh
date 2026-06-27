@@ -52,7 +52,7 @@ echo ""
 
 echo "[1/5] Generating C code from Sage..."
 mkdir -p "$TMP_DIR"
-"$SAGE" --emit-pico-c "${SRC_DIR}/hello.sage" -o "${TMP_DIR}/hello.c"
+"$SAGE" --emit-pico-c "${SCRIPT_DIR}/examples/hello.sage" -o "${TMP_DIR}/hello.c"
 
 echo "[2/5] Patching generated C for baremetal..."
 sed -i 's|#include <dlfcn.h>|#include "dlfcn.h"|' "${TMP_DIR}/hello.c"
@@ -133,10 +133,10 @@ fi
 # --- Path 2: SageVM SRVM ---
 echo ""
 echo "--- Path 2: SageVM SRVM bytecode ---"
-"$SAGEVM" compile "${SRC_DIR}/hello.sage" "${SRC_DIR}/hello.sgvm" 2>/dev/null
-"$SAGEVM" compile --riscv "${SRC_DIR}/hello.sage" "${SRC_DIR}/hello.sgrv" 2>/dev/null
-echo "  SGVM: src/hello.sgvm ($(ls -lh ${SRC_DIR}/hello.sgvm | awk '{print $5}'))"
-echo "  SRVM: src/hello.sgrv ($(ls -lh ${SRC_DIR}/hello.sgrv | awk '{print $5}'))"
+"$SAGEVM" compile "${SCRIPT_DIR}/examples/hello.sage" "${SCRIPT_DIR}/examples/hello.sgvm" 2>/dev/null
+"$SAGEVM" compile --riscv "${SCRIPT_DIR}/examples/hello.sage" "${SCRIPT_DIR}/examples/hello.sgrv" 2>/dev/null
+echo "  SGVM: examples/hello.sgvm ($(ls -lh ${SCRIPT_DIR}/examples/hello.sgvm | awk '{print $5}'))"
+echo "  SRVM: examples/hello.sgrv ($(ls -lh ${SCRIPT_DIR}/examples/hello.sgrv | awk '{print $5}'))"
 
 echo ""
 echo "=== Build Complete ==="

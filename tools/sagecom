@@ -3,7 +3,7 @@
 # Prefers native binary at /usr/local/bin/sagecom.native, falls back to interpreter
 
 SAGECOM_NATIVE="/usr/local/bin/sagecom.native"
-SAGECOM_SRC="/home/kraken/Devel/SagePico/src/sagecom.sage"
+SAGECOM_SRC="/home/kraken/Devel/SagePico/src/tools/sagecom.sage"
 SAGE="/home/kraken/Devel/SagePico/deps/sagelang/sage"
 
 # Prefer native binary if it exists

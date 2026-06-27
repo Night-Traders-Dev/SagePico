@@ -9,7 +9,7 @@ echo "=== sagecom install ==="
 
 # 1. Create the launcher script  
 LAUNCHER="${SCRIPT_DIR}/sagecom"
-SAGECOM_SRC="${PROJECT_DIR}/src/sagecom.sage"
+SAGECOM_SRC="${PROJECT_DIR}/src/tools/sagecom.sage"
 SAGE_BIN="${PROJECT_DIR}/deps/sagelang/sage"
 
 # Ensure the Sage interpreter exists
