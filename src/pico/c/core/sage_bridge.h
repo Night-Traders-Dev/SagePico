@@ -1297,7 +1297,7 @@ static void sage_repl(void) {
             }
             if (strcmp(line, ":stats") == 0) {
                 uint32_t ms = to_ms_since_boot(get_absolute_time());
-                printf("  Uptime: %u.%03us | Vars: %d\n", (unsigned)(ms/1000),(unsigned)(ms%%1000), sage_repl_vars.as.dict->count);
+                printf("  Uptime: %u.%03us | Vars: %d\n", (unsigned)(ms/1000),(unsigned)(ms%1000), sage_repl_vars.as.dict->count);
                 continue;
             }
             if (strcmp(line, ":vars") == 0) {
