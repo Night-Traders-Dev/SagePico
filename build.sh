@@ -139,13 +139,15 @@ else
     fi
 fi
 
-# --- Path 2: SageVM SRVM ---
+# --- Path 2: SageVM SRVM (Default fast path) ---
 echo ""
 echo "--- Path 2: SageVM SRVM bytecode ---"
-"$SAGEVM" compile "${SCRIPT_DIR}/examples/hello.sage" "${SCRIPT_DIR}/examples/hello.sgvm" 2>/dev/null
 "$SAGEVM" compile --riscv "${SCRIPT_DIR}/examples/hello.sage" "${SCRIPT_DIR}/examples/hello.sgrv" 2>/dev/null
-echo "  SGVM: examples/hello.sgvm ($(ls -lh ${SCRIPT_DIR}/examples/hello.sgvm | awk '{print $5}'))"
 echo "  SRVM: examples/hello.sgrv ($(ls -lh ${SCRIPT_DIR}/examples/hello.sgrv | awk '{print $5}'))"
+
+# --- Path 3: SageVM SGVM (Desktop bytecode) ---
+"$SAGEVM" compile "${SCRIPT_DIR}/examples/hello.sage" "${SCRIPT_DIR}/examples/hello.sgvm" 2>/dev/null
+echo "  SGVM: examples/hello.sgvm ($(ls -lh ${SCRIPT_DIR}/examples/hello.sgvm | awk '{print $5}'))"
 
 echo ""
 echo "=== Build Complete ==="

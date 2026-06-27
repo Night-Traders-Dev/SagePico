@@ -645,6 +645,41 @@ static SageValue sage_ffi_rcp_avail_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv;
     return sage_bool(sage_rcp_available());
 }
+/* SRVM runner wrapper */
+static SageValue sage_ffi_srvm_run_wrap(int argc, SageValue* argv) {
+    /* Load SRVM bytecode from flash key and execute on RVVM */
+    const char* key = sv_str(argv[0]);
+    uint8_t buf[2048]; uint16_t len = 0;
+    if (flash_store_get(key, buf, &len) != 0 || len < 10) return sage_bool(0);
+
+    srvm_program_t prog;
+    if (!srvm_parse(buf, len, &prog)) return sage_bool(0);
+
+    /* Use the GFX VM's rvvm instance */
+    extern gfx_vm_t* gfx_active_vm;
+    if (!gfx_active_vm) {
+        /* Create a standalone VM instance */
+        static gfx_vm_t srvm_vm;
+        extern uint8_t* disp_fb;
+        if (!disp_fb) {
+            static uint8_t dummy_fb[640*400];
+            disp_fb = dummy_fb;
+        }
+        gfx_vm_init(&srvm_vm, disp_fb);
+        gfx_active_vm = &srvm_vm;
+    }
+
+    rvvm_t* vm = &gfx_active_vm->vm;
+    srvm_load_constants(vm, &prog);
+    if (!srvm_load_chunk(vm, &prog, 0)) return sage_bool(0);
+
+    /* Run the VM */
+    uint32_t start_cycles = vm->cycles;
+    rvvm_run(vm, 100000);
+    uint32_t elapsed = vm->cycles - start_cycles;
+
+    return sage_number((double)elapsed);
+}
 /* Watchdog wrappers */
 static SageValue sage_ffi_wdg_reboot_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv; watchdog_reboot(0, 0, 0); while(1); return sage_nil();
@@ -753,6 +788,7 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "rv_instret",   sage_ffi_rv_inst_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "rv_timer",     sage_ffi_rv_timer_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "rcp_avail",    sage_ffi_rcp_avail_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "srvm_run",     sage_ffi_srvm_run_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
