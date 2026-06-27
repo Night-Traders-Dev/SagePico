@@ -32,6 +32,11 @@ typedef struct {
     /* MMIO callbacks */
     uint32_t (*mmio_read)(uint32_t addr);
     void     (*mmio_write)(uint32_t addr, uint32_t val);
+
+    /* SRVM heap: simple dict for globals (key -> value) */
+    uint32_t heap_keys[64];
+    uint32_t heap_vals[64];
+    int      heap_count;
 } rvvm_t;
 
 /* ---- Instruction decoder helpers ---- */
@@ -243,11 +248,34 @@ static int rvvm_step(rvvm_t* vm) {
         break;
     }
 
-    /* ---- FENCE / ECALL / EBREAK (0x0F) ---- */
+    /* ---- ECALL / VMSYS (0x73) — SRVM compatible ---- */
     case 0x0f:
-        if (inst == 0x00000073) { /* ECALL: halt VM */
-            vm->running = 0;
-            return 0;
+    case 0x73:
+        /* SRVM VMSYS multiplexing via funct3:
+           funct3=0: VM ops (HALT=1, PRINT=10)
+           funct3=2: Object ops (GET_GLOBAL=15, SET_GLOBAL=16, ARRAY_NEW=30, GET/SET_INDEX=32/33) */
+        if (opcode == 0x0f && inst == 0x00000073) { vm->running = 0; return 0; }
+        if (opcode == 0x73) {
+            uint8_t vmsys_op = rs1;  /* SRVM: rs1 encodes the specific VMSYS operation */
+            switch (funct3) {
+            case 0: /* VM operations */
+                if (vmsys_op == 1) { vm->running = 0; return 0; } /* HALT */
+                if (vmsys_op == 10 && vm->mmio_write) {
+                    /* PRINT: write a0 to MMIO print port */
+                    vm->mmio_write(0x20000100, vm->regs[10]); /* a0 */
+                }
+                break;
+            case 2: /* Object operations */
+                if (vmsys_op == 15 && vm->mmio_read) {
+                    /* GET_GLOBAL: rd = heap[imm_i] (index in constant pool) */
+                    if (rd) vm->regs[rd] = vm->mmio_read(0x20000200 + (uint32_t)imm_i);
+                }
+                if (vmsys_op == 16 && vm->mmio_write) {
+                    /* SET_GLOBAL: heap[imm_i] = rs2v */
+                    vm->mmio_write(0x20000200 + (uint32_t)imm_i, rs2v);
+                }
+                break;
+            }
         }
         break;
 

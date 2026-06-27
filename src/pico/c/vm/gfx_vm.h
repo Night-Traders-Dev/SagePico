@@ -50,7 +50,16 @@ static uint32_t gfx_mmio_read(uint32_t addr) {
     case 0x20000004: return gfx_active_vm->gpu_flip;
     case 0x2000001C: return gfx_active_vm->vm.cycles;
     case 0x20000020: return gfx_active_vm->gpu_vm_status;
-    default: return 0;
+    default:
+        /* SRVM heap read (0x20000200 + key_index) */
+        if (addr >= 0x20000200 && addr < 0x20000300) {
+            uint32_t key = addr - 0x20000200;
+            rvvm_t* vm = &gfx_active_vm->vm;
+            for (int i = 0; i < vm->heap_count; i++)
+                if (vm->heap_keys[i] == key) return vm->heap_vals[i];
+            return 0;
+        }
+        return 0;
     }
 }
 
@@ -65,6 +74,24 @@ static void gfx_mmio_write(uint32_t addr, uint32_t val) {
     case 0x20000010: gfx_active_vm->gpu_dma_src = val; break;
     case 0x20000014: gfx_active_vm->gpu_dma_dst = val; break;
     case 0x20000018: gfx_active_vm->gpu_dma_size = val; break;
+    case 0x20000100: /* SRVM PRINT port — output via printf */
+        printf("SRVM: %d\n", (int)val);
+        break;
+    default:
+        /* SRVM heap write (0x20000200 + key_index) */
+        if (addr >= 0x20000200 && addr < 0x20000300) {
+            uint32_t key = addr - 0x20000200;
+            rvvm_t* vm = &gfx_active_vm->vm;
+            for (int i = 0; i < vm->heap_count; i++) {
+                if (vm->heap_keys[i] == key) { vm->heap_vals[i] = val; return; }
+            }
+            if (vm->heap_count < 64) {
+                vm->heap_keys[vm->heap_count] = key;
+                vm->heap_vals[vm->heap_count] = val;
+                vm->heap_count++;
+            }
+        }
+        break;
     }
 }
 
