@@ -1245,8 +1245,8 @@ static void sage_repl(void) {
             printf("... ");
             con_puts("... ");
         } else {
-            printf(">>> ");
-            con_puts(">>> ");
+            printf("sage> ");
+            con_puts("sage> ");
         }
         idx = 0;
         while (1) {
