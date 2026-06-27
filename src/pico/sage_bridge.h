@@ -863,9 +863,9 @@ static void sage_repl_eval(const char* cmd) {
         return;
     }
     if (strcmp(cmd + pos, "version") == 0) {
-        printf("SagePico v2.0 on RP2350\\n");
-        printf("HSTX DVI 1280x800, 256-color, REPL + GFX VM\\n");
-        con_printf("SagePico v2.0\\n");
+        printf("SagePico v2.0 on RP2350\n");
+        printf("HSTX DVI 1280x800, 256-color, REPL + GFX VM\n");
+        con_printf("SagePico v2.0\n");
         return;
     }
     if (strcmp(cmd + pos, "sage") == 0) {
