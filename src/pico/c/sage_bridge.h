@@ -566,6 +566,39 @@ static SageValue sage_ffi_pwm_pio_set_wrap(int argc, SageValue* argv) {
     sage_pwm_pio_set((uint32_t)sv_int(argv[0]), (uint32_t)sv_int(argv[1]));
     return sage_nil();
 }
+/* System control wrappers */
+static SageValue sage_ffi_vreg_get_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_vreg_get_voltage());
+}
+static SageValue sage_ffi_vreg_set_wrap(int argc, SageValue* argv) {
+    sage_vreg_set_voltage((uint32_t)sv_int(argv[0])); return sage_nil();
+}
+static SageValue sage_ffi_clk_get_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_clk_get_hz_full(sv_int(argv[0])));
+}
+static SageValue sage_ffi_clk_gpout_wrap(int argc, SageValue* argv) {
+    sage_clk_gpout_init((uint)sv_int(argv[0]), (uint)sv_int(argv[1]), (uint)sv_int(argv[2]));
+    return sage_nil();
+}
+static SageValue sage_ffi_xip_enable_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; sage_xip_cache_enable(); return sage_nil();
+}
+static SageValue sage_ffi_xip_disable_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; sage_xip_cache_disable(); return sage_nil();
+}
+static SageValue sage_ffi_xip_flush_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; sage_xip_cache_flush(); return sage_nil();
+}
+/* Exception wrappers */
+static SageValue sage_ffi_exc_install_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; sage_exc_install(); return sage_nil();
+}
+/* Power management wrappers */
+static SageValue sage_ffi_powman_dormant_wrap(int argc, SageValue* argv) {
+    sage_powman_dormant((uint)sv_int(argv[0]), (uint)sv_int(argv[1]));
+    return sage_nil();
+}
 /* Watchdog wrappers */
 static SageValue sage_ffi_wdg_reboot_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv; watchdog_reboot(0, 0, 0); while(1); return sage_nil();
@@ -652,6 +685,15 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "pattern_out",   sage_ffi_pattern_out_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "pwm_pio_init",  sage_ffi_pwm_pio_init_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "pwm_pio_set",   sage_ffi_pwm_pio_set_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "vreg_get",      sage_ffi_vreg_get_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "vreg_set",      sage_ffi_vreg_set_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "clk_get",       sage_ffi_clk_get_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "clk_gpout",     sage_ffi_clk_gpout_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "xip_enable",    sage_ffi_xip_enable_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "xip_disable",   sage_ffi_xip_disable_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "xip_flush",     sage_ffi_xip_flush_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "exc_install",   sage_ffi_exc_install_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "powman_dormant",sage_ffi_powman_dormant_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
