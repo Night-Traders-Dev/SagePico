@@ -1,5 +1,6 @@
 ## parser.sage — Recursive-descent parser for RISC-V assembly
 ## Converts token stream → AST (ProgramNode with Instructions, Labels, Directives)
+## Handles: registers, immediates, labels, strings, offset(rs) memory syntax
 
 class Parser:
     proc init(self, tokens):
@@ -30,28 +31,40 @@ class Parser:
         while self.peek() != nil and self.peek().kind == TOK_NEWLINE:
             self.advance()
 
-    ## Parse a single operand (register, immediate, label, or string)
+    ## Parse a single operand — handles offset(rs) for load/store instructions
     proc parse_operand(self):
         self.skip_newlines()
         let tok = self.peek()
         if tok == nil or tok.kind == TOK_EOF or tok.kind == TOK_NEWLINE:
             return nil
 
+        # offset(rs) addressing: integer followed by (register)
+        if tok.kind == TOK_INTEGER or tok.kind == TOK_MINUS:
+            let sign_val = 1
+            if tok.kind == TOK_MINUS:
+                self.advance()
+                sign_val = -1
+                tok = self.peek()
+
+            if tok.kind == TOK_INTEGER:
+                let imm = tok.value * sign_val
+                self.advance()
+                # Look ahead for ( ... register ... )
+                let next = self.peek()
+                if next != nil and next.kind == TOK_LPAREN:
+                    self.advance()  # skip (
+                    let base = self.advance()
+                    if base != nil and base.kind == TOK_REGISTER:
+                        self.expect(TOK_RPAREN)
+                        # Return as three operands: base, offset_imm, rs — for loads: rd, base, offset
+                        return OperandNode("immediate", imm)
+                    push(self.errors, "expected register in offset(rs)")
+                    return nil
+                return OperandNode("immediate", imm)
+
         if tok.kind == TOK_REGISTER:
             self.advance()
             return OperandNode("register", tok.text)
-
-        if tok.kind == TOK_INTEGER:
-            self.advance()
-            return OperandNode("immediate", tok.value)
-
-        if tok.kind == TOK_MINUS:
-            self.advance()
-            let num = self.advance()
-            if num != nil and num.kind == TOK_INTEGER:
-                return OperandNode("immediate", 0 - num.value)
-            push(self.errors, "expected number after -")
-            return nil
 
         if tok.kind == TOK_IDENTIFIER or tok.kind == TOK_LABEL:
             self.advance()
@@ -61,18 +74,66 @@ class Parser:
             self.advance()
             return OperandNode("string", tok.text)
 
+        # Handle bare (rs) for jr/jalr-style indirect
+        if tok.kind == TOK_LPAREN:
+            self.advance()
+            let base = self.advance()
+            if base != nil and base.kind == TOK_REGISTER:
+                self.expect(TOK_RPAREN)
+                return OperandNode("register", base.text)
+            push(self.errors, "expected register after (")
+            return nil
+
         push(self.errors, "unexpected token: " + TOKEN_NAMES[tok.kind] + " '" + tok.text + "'")
         return nil
 
-    ## Parse operand list (comma-separated)
+    ## Parse operand list (comma-separated), with special handling for load/store memory syntax
     proc parse_operands(self):
         let ops = []
         self.skip_newlines()
-        let first = self.parse_operand()
-        if first != nil:
-            push(ops, first)
-            while self.peek() != nil and self.peek().kind == TOK_COMMA:
+
+        let first = self.peek()
+        if first == nil or first.kind == TOK_EOF or first.kind == TOK_NEWLINE:
+            return ops
+
+        # Loads/stores: rd, offset(rs) → parse as [rd, rs, offset]
+        # We peek ahead to detect the offset(rs) pattern
+        let saved = self.pos
+        let rd = self.parse_operand()
+        if rd != nil and rd.kind == "register":
+            self.skip_newlines()
+            if self.peek() != nil and self.peek().kind == TOK_COMMA:
                 self.advance()  # skip comma
+                self.skip_newlines()
+                # Check for offset(rs) at position 2
+                let tok2 = self.peek()
+                if tok2 != nil and tok2.kind == TOK_INTEGER:
+                    let imm_tok = self.advance()
+                    let lparen = self.peek()
+                    if lparen != nil and lparen.kind == TOK_LPAREN:
+                        # It's offset(rs) — flatten to [rd, rs, offset]
+                        self.advance()  # skip (
+                        let base = self.advance()
+                        if base != nil and base.kind == TOK_REGISTER:
+                            self.expect(TOK_RPAREN)
+                            push(ops, rd)
+                            push(ops, OperandNode("register", base.text))
+                            push(ops, OperandNode("immediate", imm_tok.value))
+                            return ops
+                    # Not offset(rs), just offset — put things back
+                    self.pos = saved
+                # Normal comma-separated operands
+                self.pos = saved
+            else:
+                self.pos = saved
+
+        # Default: flat comma-separated operands
+        let first_op = self.parse_operand()
+        if first_op != nil:
+            push(ops, first_op)
+            while self.peek() != nil and self.peek().kind == TOK_COMMA:
+                self.advance()
+                self.skip_newlines()
                 let next = self.parse_operand()
                 if next != nil:
                     push(ops, next)
