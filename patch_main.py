@@ -18,7 +18,15 @@ data = re.sub(r'    sage_gc_shutdown\(\);\n', '', data)
 arch_include = f'#include "init.h"'  # resolves from src/{arch}/
 data = data.replace(
     '#include "pico/stdlib.h"',
-    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "hstx_display.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"\n#include "rtc_bridge.h"\n{arch_include}'
+    f'#include "pico/stdlib.h"\n#include "pico_port.h"\n#include "pio_bridge.h"\n#include "dma_bridge.h"\n#include "rtc_bridge.h"\n{arch_include}\n'
+    '/* Headless: console stubs (no DVI display) */\n'
+    '#define con_printf(...) do{}while(0)\n'
+    '#define con_puts(s) do{}while(0)\n'
+    '#define con_putchar_raw(c) do{}while(0)\n'
+    '#define con_clear() do{}while(0)\n'
+    'static uint8_t* disp_fb = NULL;\n'
+    '#define FB_WIDTH 640\n'
+    '#define FB_HEIGHT 400\n'
 )
 
 # 3. Strip generated FFI stubs (all variants from v3.8.7 to v3.9.2)
@@ -58,59 +66,33 @@ data = data.replace(
     flash_code + '\n' + rvvm_code + '\n' + gfxvm_code + '\n' + bridge_code + '\n'
 )
 
-# 5. Init sequence using arch-specific helpers
+# 5. Init sequence — skip display when no DVI connected
 data = data.replace(
     '    stdio_init_all();\n    sleep_ms(2000);',
     '    sage_arch_pre_init();\n'
     '    stdio_init_all();\n'
     '    sage_arch_init();\n'
     '    sage_arch_post_init();\n'
-    f'    printf("\\n=== SagePico ({arch}) HSTX ===\\n");\n'
-    '    display_init();\n'
-    '    printf("HSTX init OK\\n");\n'
-    '    con_clear();\n'
-    f'    con_printf("=== SagePico ({arch}) ===\\n");\n'
-    '    con_printf("Display: 1280x800 DVI via HSTX\\n");\n'
-    '    int bw = FB_WIDTH/7;\n'
-    '    for (int i=0;i<7;i++) disp_rect(i*bw,20,bw,20,i+1);\n'
-    '    printf("USB ready, entering REPL in 3s...\\n");\n'
-    '    con_printf("USB ready, entering REPL...\\n\\n");\n'
-    '    sleep_ms(3000);\n'
-    '    printf("Entering REPL...\\n");\n'
+    '    sleep_ms(2000);\n'
+    f'    printf("\\n=== SagePico ({arch}) ===\\n");\n'
+    '    printf("No DVI — headless mode.\\n");\n'
+    '    printf("Entering REPL...\\n\\n");\n'
     '    sage_repl();'
 )
 
-# 6. Scanline render loop — inject after sage_repl(), before Sage program code
+# 6. Post-REPL idle loop (headless — no display render)
 data = data.replace(
     '    sage_repl();',
     '    sage_repl();\n'
-    '    int _t=0, _scan=0;\n'
+    '    printf("REPL exited — sleeping. Send any key on USB to wake.\\n");\n'
     '    while (1) {\n'
-    '        gpio_put(7,1);\n'
-    '        int v_active=(_scan>=OUT_V_SYNC+OUT_V_BP && _scan<OUT_V_SYNC+OUT_V_BP+OUT_HEIGHT);\n'
-    '        int v_sync=(_scan<OUT_V_SYNC);\n'
-    '        int fy=v_active?(_scan-OUT_V_SYNC-OUT_V_BP)/2:0;\n'
-    '        if(fy>=FB_HEIGHT)fy=FB_HEIGHT-1;\n'
-    '        for(int hx=0;hx<OUT_H_TOTAL;hx+=2){\n'
-    '            int h_active=(hx>=OUT_H_SYNC+OUT_H_BP && hx<OUT_H_SYNC+OUT_H_BP+OUT_WIDTH);\n'
-    '            int h_sync=(hx<OUT_H_SYNC);\n'
-    '            if(v_active&&h_active){\n'
-    '                int fx0=(hx-OUT_H_SYNC-OUT_H_BP)/2,fx1=fx0+1;\n'
-    '                if(fx0<0)fx0=0;if(fx1>=FB_WIDTH)fx1=FB_WIDTH-1;\n'
-    '                uint16_t c0=disp_palette[disp_fb[fy*FB_WIDTH+fx0]];\n'
-    '                uint16_t c1=disp_palette[disp_fb[fy*FB_WIDTH+fx1]];\n'
-    '                hx_push_tmds((c0>>8)&0xf8,(c0>>3)&0xfc,(c0<<3)&0xf8);\n'
-    '                hx_push_tmds((c1>>8)&0xf8,(c1>>3)&0xfc,(c1<<3)&0xf8);\n'
-    '            }else{\n'
-    '                uint8_t ctl=(h_sync?2:0)|(v_sync?1:0);\n'
-    '                hx_push_tmds(ctl,ctl,ctl);\n'
-    '                hx_push_tmds(ctl,ctl,ctl);\n'
-    '            }\n'
+    '        int c = getchar_timeout_us(500000);\n'
+    '        if (c != PICO_ERROR_TIMEOUT) {\n'
+    '            printf("Re-entering REPL...\\n");\n'
+    '            sage_repl();\n'
+    '            printf("REPL exited again.\\n");\n'
     '        }\n'
-    '        _scan++;if(_scan>=OUT_V_TOTAL)_scan=0;\n'
-    '        gpio_put(7,0);\n'
-    '        if(_t%60==0)printf("Frame %d\\n",_t/60);\n'
-    '        _t++;\n'
+    '        gpio_put(7, !gpio_get(7));\n'
     '    }\n'
 )
 
