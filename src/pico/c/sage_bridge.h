@@ -790,26 +790,11 @@ static SageValue sage_ffi_call_full(SageValue handle, SageValue name, SageValue 
 /* ---- Mini REPL: expression parser + command shell ---- */
 
 static SageValue sage_repl_vars;  /* dict: variable name -> value */
-static SageValue sage_repl_cache; /* dict: expression -> result (LRU-ish) */
 
 /* Forward decls */
 static SageValue sage_repl_parse_expr(const char* s, int* pos);
 static void sage_repl_init(void) {
     sage_repl_vars = sage_make_dict();
-    sage_repl_cache = sage_make_dict();
-}
-
-/* Check cache for simple expressions (< 30 chars, no side effects) */
-static int sage_repl_cache_lookup(const char* cmd, SageValue* out) {
-    if (strlen(cmd) > 30) return 0;
-    if (strchr(cmd, ' ') || strchr(cmd, '(') || strchr(cmd, '\"')) return 0;
-    SageValue v = sage_dict_get(sage_repl_cache.as.dict, cmd);
-    if (v.type != SAGE_TAG_NIL) { *out = v; return 1; }
-    return 0;
-}
-static void sage_repl_cache_store(const char* cmd, SageValue val) {
-    if (strlen(cmd) <= 30 && !strchr(cmd, ' ') && !strchr(cmd, '('))
-        sage_dict_set(sage_repl_cache.as.dict, cmd, val);
 }
 
 /* Skip whitespace */
@@ -1154,17 +1139,9 @@ static void sage_repl_eval(const char* cmd) {
         }
     }
 
-    /* Try as expression — check cache first */
-    SageValue cached;
-    if (sage_repl_cache_lookup(cmd, &cached)) {
-        sage_print_value(cached);
-        printf("\n");
-        con_putchar_raw('\n');
-        return;
-    }
+    /* Try as expression */
     SageValue result = sage_repl_parse_expr(cmd, &pos);
     if (result.type != SAGE_TAG_NIL) {
-        sage_repl_cache_store(cmd, result);
         sage_print_value(result);
         printf("\n");
         con_putchar_raw('\n');
