@@ -525,6 +525,21 @@ static SageValue sage_ffi_sha256_wrap(int argc, SageValue* argv) {
     const char* h = sage_sha256_str(sv_str(argv[0]));
     return sage_string(h);
 }
+/* PIO BitBLT wrappers */
+static SageValue sage_ffi_blit_init_wrap(int argc, SageValue* argv) {
+    (void)argc;
+    return sage_number((double)sage_pio_blit_init(sv_int(argv[0])));
+}
+static SageValue sage_ffi_blit_fill_wrap(int argc, SageValue* argv) {
+    extern uint8_t* disp_fb;
+    if (disp_fb) {
+        sage_pio_blit_fill_rect(disp_fb, 640,
+            (uint32_t)sv_int(argv[0]), (uint32_t)sv_int(argv[1]),
+            (uint32_t)sv_int(argv[2]), (uint32_t)sv_int(argv[3]),
+            (uint8_t)sv_int(argv[4]));
+    }
+    return sage_nil();
+}
 /* Watchdog wrappers */
 static SageValue sage_ffi_wdg_reboot_wrap(int argc, SageValue* argv) {
     (void)argc; (void)argv; watchdog_reboot(0, 0, 0); while(1); return sage_nil();
@@ -602,6 +617,8 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "wdg_kick",       sage_ffi_wdg_kick_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "clk_get_hz",     sage_ffi_clk_hz_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "irq_set_enabled",sage_ffi_irq_enabled_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "blit_init",     sage_ffi_blit_init_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "blit_fill",     sage_ffi_blit_fill_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
