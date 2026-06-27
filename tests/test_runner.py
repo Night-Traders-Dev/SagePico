@@ -110,6 +110,7 @@ if __name__ == "__main__":
     from test_pioasm import run_pioasm_tests
     from test_sagepicotool import run_sagepicotool_tests
     from test_elf2uf2 import run_elf2uf2_tests
+    from test_rtos import run_rtos_tests
 
     filter_tests = [a for a in args if not a.startswith("--")]
 
@@ -129,6 +130,8 @@ if __name__ == "__main__":
         run_suite(t, "Picotool", run_sagepicotool_tests)
     if not filter_tests or "elf2uf2" in filter_tests:
         run_suite(t, "ELF2UF2", run_elf2uf2_tests)
+    if not filter_tests or "rtos" in filter_tests:
+        run_suite(t, "SageRTOS", run_rtos_tests)
 
     t.disconnect()
     ok = t.summary()

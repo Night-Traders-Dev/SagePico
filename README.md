@@ -101,6 +101,18 @@ Measured on Feather RP2350 (ARM Cortex-M33 @ 150 MHz, headless firmware v2.1).
 | `help` | 0.3ms | Shell command |
 | `version` | 0.2ms | Shell command |
 
+### SageRTOS Benchmarks
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| `rtos_yield()` | 0.2ms | Context switch via PendSV |
+| `rtos_sleep(1)` | 1.2ms | 1ms SysTick sleep |
+| `rtos_id()` | 0.1ms | Task ID lookup |
+| Task create (128 words) | 0.3ms | Stack frame setup |
+| Task notify | 0.1ms | Single word write |
+
+### PIO Accelerator Performance (vs CPU)
+
 SRVM (Sage RISC-V Machine) is a compact bytecode format using fixed 32-bit RISC-V instructions. The `sgvmc --riscv` compiler produces `.sgrv` files (~200 bytes for simple programs). Our on-device `rvvm.h` interpreter now supports SRVM's `OP_VMSYS` (0x73) opcode for VM operations (HALT, PRINT, GET/SET_GLOBAL) and includes a 64-entry heap dict for global variable storage.
 
 **Key advantage**: SRVM programs are 10-50x smaller than transpiled C firmware and execute without the Sage runtime overhead. Ideal for compute-bound loops on PIO accelerators.

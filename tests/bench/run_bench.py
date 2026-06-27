@@ -40,6 +40,7 @@ class Benchmark:
             ("Flash Read", self.bench_flash_read),
             ("Flash Write", self.bench_flash_write),
             ("Clock", self.bench_clock),
+            ("RTOS", self.bench_rtos),
         ]
 
         results = []
@@ -105,6 +106,13 @@ class Benchmark:
         return [
             ('clock_get()', self.bench("clock-get", 'clock_get()')),
             ('clock_set()', self.bench("clock-set", 'clock_set("2026-01-01 00:00:00")')),
+        ]
+
+    def bench_rtos(self):
+        return [
+            ('rtos_yield()', self.bench("rtos-yield", 'rtos_yield()')),
+            ('rtos_sleep(1)', self.bench("rtos-sleep", 'rtos_sleep(1)')),
+            ('rtos_id()', self.bench("rtos-id", 'rtos_id()')),
         ]
 
     def close(self):
