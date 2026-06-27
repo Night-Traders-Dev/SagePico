@@ -139,31 +139,31 @@ examples/hello.sage
 | `src/tools/sage/sagecom.sage` | 158 | Desktop serial terminal — connects to Feather over USB CDC |
 | `src/tools/sage/sagepioasm.sage` | 364 | PIO assembly compiler — all 9 opcodes, labels, C-array output |
 | `src/tools/sage/sagepicotool.sage` | 82 | USB BOOTSEL tool — info, load, reboot |
-| `src/pico/sage/gfx_vm.sage` | 286 | RISC-V RV32I assembler + Graphics VM frontend API |
-| `src/pico/sage/elf2uf2.sage` | 217 | Pure-Sage ELF→UF2 converter for RP2350 |
-| `src/pico/sage/gpio.sage` | 22 | Pure Sage GPIO module |
-| `src/pico/sage/time.sage` | 14 | Pure Sage Time module |
-| `src/pico/sage/sha256.sage` | 6 | Pure Sage SHA-256 wrapper |
-| `src/pico/sage/adc.sage` | 12 | Pure Sage ADC module |
+| `src/pico/sage/vm/gfx_vm.sage` | 286 | RISC-V RV32I assembler + Graphics VM frontend API |
+| `src/pico/sage/vm/elf2uf2.sage` | 217 | Pure-Sage ELF→UF2 converter for RP2350 |
+| `src/pico/sage/io/gpio.sage` | 22 | Pure Sage GPIO module |
+| `src/pico/sage/time/time.sage` | 14 | Pure Sage Time module |
+| `src/pico/sage/crypto/sha256.sage` | 6 | Pure Sage SHA-256 wrapper |
+| `src/pico/sage/io/adc.sage` | 12 | Pure Sage ADC module |
 | Plus `pwm`, `uart`, `i2c`, `spi`, `pio`, `dma`, `flash`, `clock` (.sage each) |
 
 ### C Headers (16 files, ~3,500 lines)
 
 | File | Lines | Layer | Purpose |
 |------|-------|-------|---------|
-| `src/pico/c/sage_bridge.h` | 1,200+ | FFI+SageValue | Core bridge: FFI dispatch (59 entries), SageValue wrappers, REPL, shell |
-| `src/pico/c/hstx_display.h` | 334 | C bridge | HSTX DVI driver (inactive in headless mode) |
-| `src/pico/c/rvvm.h` | 326 | C bridge | RV32I interpreter: 32 regs, 64KB RAM, graphics opcodes |
-| `src/pico/c/flash_store.h` | 300 | C bridge | Log-structured wear-leveled K/V store (2MB flash) |
-| `src/pico/c/pio_bridge.h` | 176 | C bridge | PIO state machine + WS2812 NeoPixel driver |
-| `src/pico/c/gfx_vm.h` | 145 | C bridge | GFX VM integration: VM-to-FB, flash storage, MMIO |
-| `src/pico/c/dma_bridge.h` | 102 | C bridge | DMA channel control, DREQ constants |
-| `src/pico/c/pio_bitblt.h` | 100 | C bridge | PIO BitBLT accelerator: DMA-fed fill/copy engine |
-| `src/pico/c/sha256_bridge.h` | 95 | C bridge | Hardware SHA-256: word-at-a-time + DMA paths |
-| `src/pico/c/pico_port.h` | 93 | Direct C | `static inline` wrappers for GPIO/UART/Time/ADC/PWM/I2C/SPI |
-| `src/pico/c/rtc_bridge.h` | 70 | C bridge | Software clock with watchdog scratch persistence |
-| `src/pico/c/interp_bridge.h` | 45 | C bridge | Hardware interpolator: config/pop/peek/force |
-| `src/pico/c/powman_bridge.h` | 20 | C bridge | Power management: sleep, reset reason |
+| `src/pico/c/core/sage_bridge.h` | 1,200+ | FFI+SageValue | Core bridge: FFI dispatch (89 entries), SageValue wrappers, REPL, shell |
+| `src/pico/c/display/hstx_display.h` | 334 | C bridge | HSTX DVI driver (inactive in headless mode) |
+| `src/pico/c/vm/rvvm.h` | 326 | C bridge | RV32I interpreter: 32 regs, 64KB RAM, graphics opcodes |
+| `src/pico/c/storage/flash_store.h` | 300 | C bridge | Log-structured wear-leveled K/V store (2MB flash) |
+| `src/pico/c/pio/pio_bridge.h` | 176 | C bridge | PIO state machine + WS2812 NeoPixel driver |
+| `src/pico/c/vm/gfx_vm.h` | 145 | C bridge | GFX VM integration: VM-to-FB, flash storage, MMIO |
+| `src/pico/c/dma/dma_bridge.h` | 102 | C bridge | DMA channel control, DREQ constants |
+| `src/pico/c/pio/pio_bitblt.h` | 100 | C bridge | PIO BitBLT accelerator: DMA-fed fill/copy engine |
+| `src/pico/c/crypto/sha256_bridge.h` | 95 | C bridge | Hardware SHA-256: word-at-a-time + DMA paths |
+| `src/pico/c/core/pico_port.h` | 93 | Direct C | `static inline` wrappers for GPIO/UART/Time/ADC/PWM/I2C/SPI |
+| `src/pico/c/system/rtc_bridge.h` | 70 | C bridge | Software clock with watchdog scratch persistence |
+| `src/pico/c/math/interp_bridge.h` | 45 | C bridge | Hardware interpolator: config/pop/peek/force |
+| `src/pico/c/system/powman_bridge.h` | 20 | C bridge | Power management: sleep, reset reason |
 | `src/arm/c/init.h` | 33 | Arch init | ARM Cortex-M33: USB reset, GPIO LED, IRQ enable |
 | `src/riscv/c/init.h` | 38 | Arch init | RISC-V Hazard3: USB reset, IRQ priority fix |
 
@@ -444,7 +444,7 @@ The RP2350 has 8 PIO state machines (2 blocks × 4 SMs) that execute in parallel
 
 ### PIO BitBLT Engine
 
-`src/pico/c/pio_bitblt.h` — offloads framebuffer fill/copy from CPU to PIO. Uses DMA to feed the PIO state machine for maximum throughput.
+`src/pico/c/pio/pio_bitblt.h` — offloads framebuffer fill/copy from CPU to PIO. Uses DMA to feed the PIO state machine for maximum throughput.
 
 **Performance**: 1 cycle per pixel vs ~400 CPU cycles. 400x speedup for fill operations.
 
@@ -482,7 +482,7 @@ Falls back to `memset()` when no PIO SM or DMA channel available.
 
 ## 13. SHA-256 Hardware Accelerator
 
-`src/pico/c/sha256_bridge.h` — RP2350 hardware SHA-256 engine with three data paths.
+`src/pico/c/crypto/sha256_bridge.h` — RP2350 hardware SHA-256 engine with three data paths.
 
 ### Data Paths
 
@@ -550,7 +550,7 @@ All three pico-sdk-tools ported to pure Sage:
 |------|------|-------|-------------|
 | **sagepioasm** | `src/tools/sage/sagepioasm.sage` | 364 | PIO assembly compiler — all 9 opcodes, labels, C-array output |
 | **sagepicotool** | `src/tools/sage/sagepicotool.sage` | 82 | USB BOOTSEL tool — info, load, reboot via libsagepicotool.so |
-| **sageelf2uf2** | `src/pico/sage/elf2uf2.sage` | 217 | ELF→UF2 converter — ARM + RISC-V, PT_LOAD extraction |
+| **sageelf2uf2** | `src/pico/sage/vm/elf2uf2.sage` | 217 | ELF→UF2 converter — ARM + RISC-V, PT_LOAD extraction |
 
 ### sagepioasm Usage
 

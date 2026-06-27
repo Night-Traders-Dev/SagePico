@@ -5,7 +5,7 @@ Converts ARM/RISC-V ELF binaries to UF2 firmware images for RP2040/RP2350. Writt
 ## Usage
 
 ```bash
-sage src/pico/sage/elf2uf2.sage input.elf [-o output.uf2]
+sage src/pico/sage/vm/elf2uf2.sage input.elf [-o output.uf2]
 ```
 
 ## How It Works

@@ -174,7 +174,7 @@ delay_low:
 
 ## Next Steps
 
-1. **✓ BitBLT accelerator** — `src/pico/c/pio_bitblt.h` with PIO program + C bridge
+1. **✓ BitBLT accelerator** — `src/pico/c/pio/pio_bitblt.h` with PIO program + C bridge
 2. **✓ Wire into GFX VM** — connected to MMIO registers 0x20000008-0x20000018
 3. **Benchmark** — run `tests/bench/run_bench.py` to measure performance
 4. **✓ CRC-32** — implemented with optimized software fallback

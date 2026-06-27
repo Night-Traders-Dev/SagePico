@@ -262,14 +262,14 @@ bar_loop:
 
 | File | Purpose |
 |------|---------|
-| `src/pico/rvvm.h` | RISC-V RV32I interpreter core |
-| `src/pico/gfx_vm.h` | Graphics VM integration (flash + MMIO + framebuffer) |
-| `src/pico/gfx_vm.sage` | Sage frontend: assembler + high-level API |
-| `src/pico/dma_bridge.h` | DMA channel control |
-| `src/pico/flash_store.h` | Flash-backed key-value store |
-| `src/pico/pio_bridge.h` | PIO state machine + WS2812 driver |
-| `src/pico/sage_bridge.h` | FFI dispatch table + native bindings |
-| `src/pico/hstx_display.h` | HSTX DVI display + framebuffer console |
+| `src/pico/c/vm/rvvm.h` | RISC-V RV32I interpreter core |
+| `src/pico/c/vm/gfx_vm.h` | Graphics VM integration (flash + MMIO + framebuffer) |
+| `src/pico/sage/vm/gfx_vm.sage` | Sage frontend: assembler + high-level API |
+| `src/pico/c/dma/dma_bridge.h` | DMA channel control |
+| `src/pico/c/storage/flash_store.h` | Flash-backed key-value store |
+| `src/pico/c/pio/pio_bridge.h` | PIO state machine + WS2812 driver |
+| `src/pico/c/core/sage_bridge.h` | FFI dispatch table + native bindings |
+| `src/pico/c/display/hstx_display.h` | HSTX DVI display + framebuffer console |
 
 ## Future Enhancements
 
