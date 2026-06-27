@@ -499,6 +499,27 @@ static SageValue sage_ffi_clock_get_wrap(int argc, SageValue* argv) {
 static SageValue sage_ffi_clock_set_wrap(int argc, SageValue* argv) {
     return sage_bool(sage_clock_set(sv_str(argv[0])));
 }
+/* Power management wrappers */
+static SageValue sage_ffi_powman_sleep_wrap(int argc, SageValue* argv) {
+    sage_powman_sleep_ms((uint32_t)sv_int(argv[0])); return sage_nil();
+}
+static SageValue sage_ffi_powman_reset_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv;
+    return sage_number((double)sage_powman_reset_reason());
+}
+/* Interpolator wrappers */
+static SageValue sage_ffi_interp_config_wrap(int argc, SageValue* argv) {
+    sage_interp_config(sv_int(argv[0]), sv_int(argv[1]),
+                       (uint32_t)sv_int(argv[2]), (uint32_t)sv_int(argv[3]),
+                       (uint8_t)sv_int(argv[4]));
+    return sage_nil();
+}
+static SageValue sage_ffi_interp_pop_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_interp_pop(sv_int(argv[0]), sv_int(argv[1])));
+}
+static SageValue sage_ffi_interp_peek_wrap(int argc, SageValue* argv) {
+    return sage_number((double)sage_interp_peek(sv_int(argv[0]), sv_int(argv[1])));
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -546,6 +567,11 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "clock_init",    sage_ffi_clock_init_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "clock_get",     sage_ffi_clock_get_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "clock_set",     sage_ffi_clock_set_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "powman_sleep",  sage_ffi_powman_sleep_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "powman_reset",  sage_ffi_powman_reset_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "interp_config", sage_ffi_interp_config_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "interp_pop",    sage_ffi_interp_pop_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "interp_peek",   sage_ffi_interp_peek_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
