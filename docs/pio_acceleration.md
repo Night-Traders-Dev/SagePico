@@ -144,13 +144,13 @@ delay_low:
 
 | # | Accelerator | Impact | Complexity | PIO SMs | Status |
 |---|------------|--------|------------|---------|--------|
-| 1 | BitBLT Engine | High | Medium | 1-2 | Design |
-| 2 | GFX VM HW Accel | High | High | 2-3 | Design |
-| 3 | CRC-32 Engine | Medium | Low | 1 | Design |
-| 4 | GPIO Pattern Gen | Medium | Low | 1 | Design |
-| 5 | DMA Scatter-Gather | Medium | Medium | 1-2 | Design |
-| 6 | TRNG | Low | Low | 1 | Design |
-| 7 | PWM Controller | Low | Low | 1 | Design |
+| 1 | BitBLT Engine | High | Medium | 1-2 | **Implemented** (`pio_bitblt.h`) |
+| 2 | GFX VM HW Accel | High | High | 2-3 | **Implemented** (wired via MMIO) |
+| 3 | CRC-32 Engine | Medium | Low | 1 | **Implemented** (`pio_accel.h`) |
+| 4 | GPIO Pattern Gen | Medium | Low | 1 | **Implemented** (`pio_accel.h`) |
+| 5 | DMA Scatter-Gather | Medium | Medium | 1-2 | **Implemented** (`pio_accel.h`) |
+| 6 | True RNG | Low | Low | 1 | **Implemented** (`pio_accel.h`) |
+| 7 | PWM Controller | Low | Low | 1 | **Implemented** (`pio_accel.h`) |
 
 ## Architecture: How PIO Integrates with SagePico
 
@@ -174,7 +174,8 @@ delay_low:
 
 ## Next Steps
 
-1. **Implement BitBLT accelerator** — `src/pico/c/pio_bitblt.h` with PIO program + C bridge
-2. **Wire into GFX VM** — connect to MMIO registers 0x20000008-0x20000018
-3. **Benchmark** — measure FILL(640,400) CPU vs PIO vs DMA
-4. **CRC-32** — quick win, simple PIO program, immediate use for data integrity
+1. **✓ BitBLT accelerator** — `src/pico/c/pio_bitblt.h` with PIO program + C bridge
+2. **✓ Wire into GFX VM** — connected to MMIO registers 0x20000008-0x20000018
+3. **Benchmark** — run `tests/bench/run_bench.py` to measure performance
+4. **✓ CRC-32** — implemented with optimized software fallback
+5. **✓ Remaining engines** — TRNG, Pattern Gen, Scatter-Gather, PWM all in `pio_accel.h`
