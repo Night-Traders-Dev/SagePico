@@ -149,5 +149,5 @@ echo "  SRVM: examples/hello.sgrv ($(ls -lh ${SCRIPT_DIR}/examples/hello.sgrv | 
 
 echo ""
 echo "=== Build Complete ==="
-echo "Flash: picotool load -f ${UF2_OUT}"
+echo "Flash: sagepicotool load -f ${UF2_OUT}"
 echo "Serial: cat /dev/ttyACM0"

@@ -83,6 +83,9 @@ else:
             if r < 0:
                 print "Error: reboot failed"
             else:
-                print "Rebooting" + (" to BOOTSEL" if to_bootsel else "") + "..."
+                let msg = "Rebooting"
+                if to_bootsel:
+                    msg = msg + " to BOOTSEL"
+                print msg + "..."
 
 ffi_call(libpt, "sagepicotool_close", "void", [])
