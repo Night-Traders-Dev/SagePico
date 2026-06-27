@@ -520,6 +520,30 @@ static SageValue sage_ffi_interp_pop_wrap(int argc, SageValue* argv) {
 static SageValue sage_ffi_interp_peek_wrap(int argc, SageValue* argv) {
     return sage_number((double)sage_interp_peek(sv_int(argv[0]), sv_int(argv[1])));
 }
+/* SHA256 wrappers */
+static SageValue sage_ffi_sha256_wrap(int argc, SageValue* argv) {
+    const char* h = sage_sha256_str(sv_str(argv[0]));
+    return sage_string(h);
+}
+/* Watchdog wrappers */
+static SageValue sage_ffi_wdg_reboot_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; watchdog_reboot(0, 0, 0); while(1); return sage_nil();
+}
+static SageValue sage_ffi_wdg_enable_wrap(int argc, SageValue* argv) {
+    watchdog_enable(sv_int(argv[0]), 1); return sage_nil();
+}
+static SageValue sage_ffi_wdg_kick_wrap(int argc, SageValue* argv) {
+    (void)argc; (void)argv; watchdog_update(); return sage_nil();
+}
+/* Clock wrappers */
+static SageValue sage_ffi_clk_hz_wrap(int argc, SageValue* argv) {
+    return sage_number((double)clock_get_hz((clock_handle_t)sv_int(argv[0])));
+}
+/* IRQ wrappers */
+static SageValue sage_ffi_irq_enabled_wrap(int argc, SageValue* argv) {
+    irq_set_enabled((uint)sv_int(argv[0]), sv_int(argv[1]) != 0);
+    return sage_nil();
+}
 
 #define FFI_ENTRY(handle, name, fn) { (void*)(handle), name, (void*)(fn) }
 
@@ -572,6 +596,12 @@ static const SageFFIEntry sage_ffi_table[] = {
     FFI_ENTRY(FFI_HANDLE_PICO, "interp_config", sage_ffi_interp_config_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "interp_pop",    sage_ffi_interp_pop_wrap),
     FFI_ENTRY(FFI_HANDLE_PICO, "interp_peek",   sage_ffi_interp_peek_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "sha256",         sage_ffi_sha256_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "wdg_reboot",     sage_ffi_wdg_reboot_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "wdg_enable",     sage_ffi_wdg_enable_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "wdg_kick",       sage_ffi_wdg_kick_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "clk_get_hz",     sage_ffi_clk_hz_wrap),
+    FFI_ENTRY(FFI_HANDLE_PICO, "irq_set_enabled",sage_ffi_irq_enabled_wrap),
 };
 #define SAGE_FFI_TABLE_LEN (sizeof(sage_ffi_table) / sizeof(sage_ffi_table[0]))
 
